@@ -20,16 +20,16 @@ A = np.diag(main_diag) + np.diag(off_diag, k=1) + np.diag(off_diag, k=-1)
 F = nu_Sigma_f * np.eye(N)
 
 phi = np.ones(N)
-k_old = 1.0
 
-for _ in range(200):
-    source = F @ phi
-    phi_new = np.linalg.solve(A, source)
-    k_new = k_old * np.sum(phi_new) / np.sum(phi)
-    phi = phi_new / np.max(phi_new)
-    k_old = k_new
+for it in range(200):
+    source = F @ phi                        # 当前裂变源
+    phi_new = np.linalg.solve(A, source)    # 求解新通量
+    k_new = np.sum(F @ phi_new) / np.sum(source)  # k = 新/旧 裂变中子数
+    phi = phi_new / np.max(phi_new)         # 归一化
+    if it % 40 == 0:
+        print(f"  iter {it}: k = {k_new:.6f}")
 
-print(f"k_eff = {k_new:.5f}")
+print(f"\nk_eff = {k_new:.6f}")
 
 x = np.linspace(h/2, L - h/2, N)
 plt.figure(figsize=(8, 4))
@@ -41,4 +41,3 @@ plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.savefig('flux.png', dpi=150)
 print("flux saved to flux.png")
-plt.show()
