@@ -6,17 +6,19 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 from solver import solve_two_group, scan_critical_size, search_critical_boron, DEFAULTS
+from solver_2d import solve_two_group_2d
 from burnup_solver import run_burnup_coupled, N_U_TOTAL
 
 st.set_page_config(page_title="Neutron Diffusion Solver", page_icon="⚛️", layout="wide")
-st.title("⚛️ 一维中子扩散方程求解器")
-st.caption("双群 · 有限差分法 · 幂迭代  |  核工程交互式学习工具")
+st.title("⚛️ 中子扩散方程求解器")
+st.caption("一维 & 二维 · 双群 · 有限差分法 · 幂迭代  |  核工程交互式学习工具")
 
 # ===== 侧边栏 =====
 st.sidebar.header("⚙️ 参数设置")
 
 tab = st.sidebar.radio("📐 选择模块",
-                       ["双群扩散求解", "临界尺寸扫描", "临界硼搜索", "🔥 燃耗耦合"])
+                       ["双群扩散求解", "临界尺寸扫描", "临界硼搜索",
+                        "🟦 二维扩散 (2D)", "🔥 燃耗耦合"])
 
 # 通用几何参数
 N = st.sidebar.slider("网格点数 N", 30, 300, 150, 10,
@@ -230,6 +232,140 @@ elif tab == "临界硼搜索":
             | 对应的 Σa₂ 增量 | {alpha * cb['C_crit']:.4f} cm⁻¹ | 硼对热群吸收的贡献 |
 
             **算法**：外迭代 (二分法) + 内迭代 (幂迭代) — 典型的嵌套迭代结构。
+            """)
+
+# ===== 二维扩散 (2D) =====
+elif tab == "🟦 二维扩散 (2D)":
+    st.sidebar.markdown("### 📐 二维几何")
+
+    col_L1, col_L2 = st.sidebar.columns(2)
+    with col_L1:
+        Lx = st.slider("Lx (cm)", 50.0, 400.0, 200.0, 10.0, help="x 方向边长")
+    with col_L2:
+        Ly = st.slider("Ly (cm)", 50.0, 400.0, 200.0, 10.0, help="y 方向边长")
+
+    col_N1, col_N2 = st.sidebar.columns(2)
+    with col_N1:
+        Nx = st.slider("Nx 网格", 20, 100, 60, 5, help="x 方向网格点数")
+    with col_N2:
+        Ny = st.slider("Ny 网格", 20, 100, 60, 5, help="y 方向网格点数")
+
+    grid_info = st.sidebar.caption(
+        f"未知数: {2 * Nx * Ny} 个 (双群 × {Nx}×{Ny})"
+    )
+
+    if st.sidebar.button("🔬 二维求解", type="primary", use_container_width=True):
+        with st.spinner(f"稀疏矩阵求解中... ({Nx}×{Ny} 网格, {2*Nx*Ny} 未知数)"):
+            result = solve_two_group_2d(Lx=Lx, Ly=Ly, Nx=Nx, Ny=Ny, sections=sections)
+
+        k_eff = result['k_eff']
+        X, Y = result['X'], result['Y']
+        phi1 = result['phi1']
+        phi2 = result['phi2']
+        ratio = phi2 / (phi1 + 1e-12)
+
+        # Buckling 对比
+        p = {**DEFAULTS, **sections}
+        Sr1 = p['Sa1'] + p['Ss12']
+        k_inf = p['nu_Sf1'] / Sr1 + (p['nu_Sf2'] / p['Sa2']) * (p['Ss12'] / Sr1)
+        L2_mig = p['D2'] / p['Sa2']
+        tau = p['D1'] / Sr1
+        M2 = L2_mig + tau
+        B2 = (np.pi / Lx)**2 + (np.pi / Ly)**2
+        k_buckling = k_inf / (1 + M2 * B2)
+
+        # 指标卡片
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            delta = "🟢 超临界" if k_eff > 1.001 else ("🔴 次临界" if k_eff < 0.999 else "🟡 临界")
+            st.metric("k_eff (FDM)", f"{k_eff:.6f}", delta=delta)
+        with col2:
+            st.metric("k_eff (Buckling)", f"{k_buckling:.6f}",
+                     delta=f"偏差 {abs(k_eff-k_buckling)/k_eff*100:.2f}%")
+        with col3:
+            st.metric("快群通量峰值", f"{np.max(phi1):.4f}")
+        with col4:
+            st.metric("热群通量峰值", f"{np.max(phi2):.4f}")
+
+        # 四联图
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+        # 图 1: 快群 heatmap
+        ax = axes[0, 0]
+        im1 = ax.contourf(X, Y, phi1, levels=20, cmap='Reds')
+        ax.set_xlabel('x (cm)')
+        ax.set_ylabel('y (cm)')
+        ax.set_title(f'Fast Flux (Group 1)', fontweight='bold')
+        ax.set_aspect('equal')
+        plt.colorbar(im1, ax=ax, shrink=0.8)
+
+        # 图 2: 热群 heatmap
+        ax = axes[0, 1]
+        im2 = ax.contourf(X, Y, phi2, levels=20, cmap='Blues')
+        ax.set_xlabel('x (cm)')
+        ax.set_ylabel('y (cm)')
+        ax.set_title(f'Thermal Flux (Group 2)', fontweight='bold')
+        ax.set_aspect('equal')
+        plt.colorbar(im2, ax=ax, shrink=0.8)
+
+        # 图 3: 中心线剖面
+        ax = axes[1, 0]
+        mid_y = Ny // 2
+        x_1d = result['x']
+        ax.plot(x_1d, phi1[mid_y, :], '#e74c3c', linewidth=2, label=f'Fast (y=L/2)')
+        ax.plot(x_1d, phi2[mid_y, :], '#3498db', linewidth=2, label=f'Thermal (y=L/2)')
+        # 叠加 sin 形状
+        theory = np.sin(np.pi * x_1d / Lx)
+        theory = theory / theory.max()
+        ax.plot(x_1d, theory * np.max(phi1[mid_y, :]), 'k--', linewidth=1, alpha=0.5,
+                label='sin(πx/L) 参考')
+        ax.set_xlabel('x (cm)')
+        ax.set_ylabel('Normalized Flux')
+        ax.set_title('Centerline Profile (y = Ly/2)', fontweight='bold')
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.25)
+
+        # 图 4: 热/快比
+        ax = axes[1, 1]
+        im3 = ax.contourf(X, Y, ratio, levels=20, cmap='RdYlBu_r')
+        ax.set_xlabel('x (cm)')
+        ax.set_ylabel('y (cm)')
+        ax.set_title(f'Thermal / Fast Ratio  '
+                     f'({np.min(ratio):.2f} – {np.max(ratio):.2f})', fontweight='bold')
+        ax.set_aspect('equal')
+        plt.colorbar(im3, ax=ax, shrink=0.8)
+
+        plt.suptitle(f'2D Two-Group Diffusion  |  k_eff = {k_eff:.6f}  '
+                     f'|  {Lx:.0f}×{Ly:.0f} cm  |  Grid {Nx}×{Ny}',
+                     fontsize=12, fontweight='bold', y=1.01)
+        plt.tight_layout()
+        st.pyplot(fig)
+
+        # 物理解释
+        with st.expander("📖 二维扩散原理", expanded=False):
+            st.markdown(f"""
+            ### 从 1D 到 2D
+
+            **1D slab** → **2D 矩形** 的关键变化：
+
+            | 项目 | 1D | 2D |
+            |------|-----|-----|
+            | 几何 | 平板 (仅 x) | 矩形 (x, y) |
+            | Laplacian | 3 点模板 | 5 点模板 |
+            | 矩阵尺寸 | 2N × 2N | 2(Nx·Ny) × 2(Nx·Ny) |
+            | 矩阵类型 | 三对角 + 块 | 块稀疏 (每行 5 非零元) |
+            | 求解器 | `np.linalg.solve` | `scipy.sparse.linalg.spsolve` |
+
+            **Buckling 公式 (2D 方形)**：
+            $$B^2 = \\left(\\frac{{\\pi}}{{L_x}}\\right)^2 + \\left(\\frac{{\\pi}}{{L_y}}\\right)^2$$
+            $$k_{{eff}} = \\frac{{k_\\infty}}{{1 + M^2 B^2}}$$
+
+            **当前结果**：
+            - k_eff (FDM) = {k_eff:.6f}
+            - k_eff (Buckling) = {k_buckling:.6f}
+            - k_inf = {k_inf:.4f},  M² = {M2:.1f} cm²
+            - B² = {B2:.6f} cm⁻²
+            - 通量形状：二维 sin(πx/Lx)·sin(πy/Ly) 分布，中心最高，边界为零
             """)
 
 # ===== 燃耗耦合 =====
