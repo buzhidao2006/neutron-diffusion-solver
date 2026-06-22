@@ -14,6 +14,7 @@ from scipy.sparse.linalg import spsolve
 
 # 复用 solver.py 的默认截面数据
 from solver import DEFAULTS
+from power_iteration import power_iteration, power_iteration_chebyshev
 
 
 def _build_2d_laplacian(Nx, Ny, hx, hy):
@@ -46,7 +47,8 @@ def _build_2d_laplacian(Nx, Ny, hx, hy):
     return L_2d.tocsr()
 
 
-def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None):
+def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
+                        method='chebyshev', tol=1e-10, max_iter=200):
     """
     求解二维双群中子扩散方程，返回 k_eff 和 2D 通量分布。
 
@@ -58,6 +60,13 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None):
     Lx, Ly : float, x/y 方向边长 (cm)，默认均为 200
     Nx, Ny : int, x/y 方向网格点数，默认均为 60
     sections : dict, 截面数据，可部分覆盖 DEFAULTS
+    method : str
+        'power'     — 标准幂迭代（无加速）
+        'chebyshev' — Chebyshev 多项式外推加速（默认）
+    tol : float
+        k_eff 收敛容忍度
+    max_iter : int
+        最大迭代次数
 
     Returns
     -------
@@ -70,6 +79,9 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None):
         'phi1': np.ndarray,      # 快群通量 2D (Ny, Nx)
         'phi2': np.ndarray,      # 热群通量 2D (Ny, Nx)
         'phi': np.ndarray,       # 完整通量向量 (2*Nx*Ny,)
+        'n_iter': int,           # 实际迭代次数
+        'k_history': list,       # k_eff 收敛历史
+        'residual': list,        # 残差历史
     }
     """
     p = {**DEFAULTS, **(sections or {})}
@@ -105,17 +117,17 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None):
     F = bmat([[F11, F12], [Z, Z]], format='csr')
 
     # ---- 幂迭代 ----
-    phi = np.ones(2 * N_total)
-    k_eff = 1.0
-    for _ in range(100):
-        source = F @ phi
-        phi_new = spsolve(A, source)
-        k_new = np.sum(F @ phi_new) / np.sum(source)
-        phi = phi_new / np.max(np.abs(phi_new))
-        if abs(k_new - k_eff) < 1e-8:
-            k_eff = k_new
-            break
-        k_eff = k_new
+    phi0 = np.ones(2 * N_total)
+
+    if method == 'power':
+        result = power_iteration(A, F, phi0, max_iter=max_iter, tol=tol)
+    elif method == 'chebyshev':
+        result = power_iteration_chebyshev(A, F, phi0, max_iter=max_iter, tol=tol, warmup=15)
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'power' or 'chebyshev'.")
+
+    phi = result['phi']
+    k_eff = result['k_eff']
 
     # ---- 坐标与通量整形 ----
     x = np.linspace(hx / 2, Lx - hx / 2, Nx)  # cell centers
@@ -132,6 +144,9 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None):
         'phi1': phi1_2d,
         'phi2': phi2_2d,
         'phi': phi,
+        'n_iter': result['n_iter'],
+        'k_history': result['k_history'],
+        'residual': result['residual'],
     }
 
 
