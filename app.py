@@ -1,6 +1,6 @@
 """
 中子扩散方程 — 交互式可视化
-Streamlit 应用，支持双群求解、临界尺寸扫描、临界硼搜索、燃耗耦合
+Streamlit 应用，支持双群求解、临界尺寸扫描、临界硼搜索、燃耗耦合、点堆动力学
 """
 import streamlit as st
 import numpy as np
@@ -8,17 +8,22 @@ import matplotlib.pyplot as plt
 from solver import solve_two_group, scan_critical_size, search_critical_boron, DEFAULTS
 from solver_2d import solve_two_group_2d
 from burnup_solver import run_burnup_coupled, N_U_TOTAL
+from point_kinetics import (
+    solve_point_kinetics, KEEPIN_U235,
+    reactivity_step, reactivity_ramp, reactivity_sinusoidal,
+    reactivity_rod_ejection, prompt_jump, asymptotic_period,
+)
 
 st.set_page_config(page_title="Neutron Diffusion Solver", page_icon="⚛️", layout="wide")
 st.title("⚛️ 中子扩散方程求解器")
-st.caption("一维 & 二维 · 双群 · 有限差分法 · 幂迭代  |  核工程交互式学习工具")
+st.caption("一维 & 二维 · 双群 · 有限差分法 · 幂迭代 · 点堆动力学  |  核工程交互式学习工具")
 
 # ===== 侧边栏 =====
 st.sidebar.header("⚙️ 参数设置")
 
 tab = st.sidebar.radio("📐 选择模块",
                        ["双群扩散求解", "临界尺寸扫描", "临界硼搜索",
-                        "🟦 二维扩散 (2D)", "🔥 燃耗耦合"])
+                        "🟦 二维扩散 (2D)", "🔥 燃耗耦合", "⏱️ 点堆动力学"])
 
 # 通用几何参数
 N = st.sidebar.slider("网格点数 N", 30, 300, 150, 10,
@@ -481,6 +486,191 @@ elif tab == "🔥 燃耗耦合":
             | 辐照时间 | {hist['time_days'][-1]:.0f} 天 ({time_years[-1]:.1f} 年) |
             | U235 消耗 | {enrichment*100:.1f}% → {u235_final:.2f}% |
             | Pu239 峰值 | {np.max(hist['N_Pu239']) / N_U_TOTAL * 100:.2f}% |
+            """)
+
+# ===== 点堆动力学 =====
+elif tab == "⏱️ 点堆动力学":
+    st.sidebar.markdown("### ⏱️ 瞬态场景")
+
+    scenario = st.sidebar.selectbox(
+        "反应性引入方式",
+        ["小阶跃 (+100 pcm)", "负阶跃 (−500 pcm, 停堆)",
+         "瞬发超临界 (+1000 pcm)", "线性提棒",
+         "弹棒事故", "正弦振荡"]
+    )
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📐 场景参数")
+
+    if scenario == "小阶跃 (+100 pcm)":
+        rho_pcm = st.sidebar.slider("反应性 (pcm)", 10, 600, 100, 10)
+        t_span_val = st.sidebar.slider("仿真时间 (s)", 5, 120, 40, 5)
+
+    elif scenario == "负阶跃 (−500 pcm, 停堆)":
+        rho_pcm = -st.sidebar.slider("|反应性| (pcm)", 50, 1000, 500, 50)
+        t_span_val = st.sidebar.slider("仿真时间 (s)", 10, 300, 100, 10)
+
+    elif scenario == "瞬发超临界 (+1000 pcm)":
+        rho_pcm = st.sidebar.slider("反应性 (pcm)", 700, 2000, 1000, 50)
+        t_span_val = st.sidebar.slider("仿真时间 (s)", 0.05, 1.0, 0.15, 0.05)
+
+    elif scenario == "线性提棒":
+        rho_rate = st.sidebar.slider("提棒速率 (pcm/s)", 0.5, 20.0, 3.0, 0.5)
+        rho_pcm = 0  # 不使用
+        t_span_val = st.sidebar.slider("仿真时间 (s)", 20, 300, 150, 10)
+
+    elif scenario == "弹棒事故":
+        rho_pcm = st.sidebar.slider("最大反应性 (pcm)", 500, 2000, 1000, 50)
+        tau_eject = st.sidebar.slider("弹棒时间常数 (ms)", 10, 200, 30, 10)
+        t_span_val = st.sidebar.slider("仿真时间 (s)", 0.1, 2.0, 0.4, 0.1)
+
+    elif scenario == "正弦振荡":
+        amp = st.sidebar.slider("振幅 (pcm)", 10, 200, 50, 10)
+        period_osc = st.sidebar.slider("振荡周期 (s)", 5, 60, 20, 5)
+        rho_pcm = 0  # 不使用
+        t_span_val = st.sidebar.slider("仿真时间 (s)", 20, 200, 80, 10)
+
+    if st.sidebar.button("⏱️ 计算瞬态", type="primary", use_container_width=True):
+        with st.spinner("求解点堆动力学方程..."):
+
+            # 构造反应性函数
+            if scenario == "小阶跃 (+100 pcm)":
+                rho_func = lambda t: reactivity_step(t, rho_pcm * 1e-5, t_insert=1.0)
+            elif scenario == "负阶跃 (−500 pcm, 停堆)":
+                rho_func = lambda t: reactivity_step(t, rho_pcm * 1e-5, t_insert=1.0)
+            elif scenario == "瞬发超临界 (+1000 pcm)":
+                rho_func = lambda t: reactivity_step(t, rho_pcm * 1e-5, t_insert=0.0)
+                use_log = True
+                P_max_val = 1e4
+            elif scenario == "线性提棒":
+                rho_func = lambda t: reactivity_ramp(t, rho_rate * 1e-5, t_start=5.0)
+            elif scenario == "弹棒事故":
+                rho_func = lambda t: reactivity_rod_ejection(
+                    t, rho_pcm * 1e-5, t_eject=0.0, tau=tau_eject / 1000)
+            elif scenario == "正弦振荡":
+                rho_func = lambda t: reactivity_sinusoidal(t, amp * 1e-5, period_osc)
+
+            # 判断是否需要用 log-space
+            use_log = scenario in ["瞬发超临界 (+1000 pcm)", "弹棒事故", "线性提棒"]
+            P_max_val = 1e4 if use_log else 1e8
+
+            result = solve_point_kinetics(
+                rho_func,
+                t_span=(0, t_span_val),
+                use_log=use_log,
+                P_max=P_max_val,
+            )
+
+        beta = KEEPIN_U235['beta']
+        beta_pcm = beta * 1e5
+
+        # 指标卡片
+        P_final = result.P[-1]
+        P_max_val = np.max(result.P)
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("最终功率 P/P₀", f"{P_final:.4f}",
+                      delta=f"峰值 {P_max_val:.4f}" if P_max_val > P_final else None)
+        with col2:
+            rho_final = result.rho[-1]
+            st.metric("最终反应性", f"{rho_final * 1e5:.0f} pcm",
+                      delta=f"{rho_final / beta:.1f} $")
+        with col3:
+            T_asym = asymptotic_period(rho_final)
+            st.metric("渐近周期", f"{T_asym:.1f} s" if abs(T_asym) < 1e6 else "∞")
+        with col4:
+            if abs(rho_final) > 0 and abs(rho_final) < beta:
+                Pj = prompt_jump(1.0, rho_final)
+                st.metric("瞬发跳变理论值", f"{Pj:.3f} P₀")
+            else:
+                st.metric("状态", "瞬发临界!" if rho_final >= beta else "深次临界")
+
+        # 双图：功率 + 反应性
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+
+        # 功率
+        ax1.plot(result.t, result.P, 'b-', linewidth=2.0)
+        ax1.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, label='初始稳态')
+        if abs(rho_final) > 0 and abs(rho_final) < beta:
+            Pj = prompt_jump(1.0, rho_final)
+            if 0 < Pj < 20:
+                ax1.axhline(y=Pj, color='orange', linestyle=':', alpha=0.7,
+                            label=f'瞬发跳变 = {Pj:.2f}')
+        ax1.set_xlabel('时间 (s)')
+        ax1.set_ylabel('归一化功率 P/P₀')
+        ax1.set_title(f'功率响应 — {scenario}', fontweight='bold')
+        ax1.legend(fontsize=9)
+        ax1.grid(True, alpha=0.25)
+        if P_max_val > 100:
+            ax1.set_yscale('log')
+
+        # 反应性
+        ax2.plot(result.t, result.rho * 1e5, 'r-', linewidth=2.0)
+        ax2.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+        ax2.axhline(y=beta_pcm, color='orange', linestyle=':', alpha=0.7,
+                    label=f'β = {beta_pcm:.0f} pcm (瞬发临界)')
+        ax2.set_xlabel('时间 (s)')
+        ax2.set_ylabel('反应性 ρ (pcm)')
+        ax2.set_title('反应性引入历史', fontweight='bold')
+        ax2.legend(fontsize=9)
+        ax2.grid(True, alpha=0.25)
+
+        plt.tight_layout()
+        st.pyplot(fig)
+
+        # 周期
+        fig2, ax = plt.subplots(figsize=(13, 4))
+        period = result.period
+        mask = (np.abs(period) < 1e4) & (period != 0)
+        ax.plot(result.t[mask], period[mask], 'g-', linewidth=2.0)
+        ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+        ax.set_xlabel('时间 (s)')
+        ax.set_ylabel('反应堆周期 T (s)')
+        ax.set_title('反应堆周期', fontweight='bold')
+        ax.grid(True, alpha=0.25)
+        st.pyplot(fig2)
+
+        # 物理解释
+        with st.expander("📖 点堆动力学原理", expanded=False):
+            st.markdown(f"""
+            ### 点堆动力学方程
+
+            6 群缓发中子先驱核方程：
+
+            $$\\frac{{dP}}{{dt}} = \\frac{{\\rho(t) - \\beta}}{{\\Lambda}} P(t) + \\sum_{{i=1}}^{{6}} \\lambda_i C_i(t)$$
+
+            $$\\frac{{dC_i}}{{dt}} = \\frac{{\\beta_i}}{{\\Lambda}} P(t) - \\lambda_i C_i(t)$$
+
+            ### 关键物理概念
+
+            | 概念 | 值 | 含义 |
+            |------|-----|------|
+            | **缓发中子份额 β** | {beta_pcm:.0f} pcm (0.7%) | 裂变中子中由先驱核衰变产生的份额 |
+            | **中子代时间 Λ** | 2×10⁻⁵ s | 热中子从产生到引起下次裂变的平均时间 |
+            | **瞬发临界** | ρ > β | 仅靠瞬发中子就能维持链式反应 → 周期 ~0.01s |
+            | **缓发临界** | 0 < ρ < β | 需要缓发中子参与 → 周期 ~10–100s (可控) |
+            | **1 元 ($)** | = β = {beta_pcm:.0f} pcm | 反应性的美元单位 |
+
+            ### 为什么缓发中子让反应堆可控？
+
+            如果没有缓发中子（β=0），中子代时间 Λ=2×10⁻⁵ s 会让 **任何正反应性** 都导致功率 ~10⁻⁴ s 级指数爆发。
+            缓发中子将有效代时间延长到 ~0.1s，给了控制棒、硼酸等机械/化学控制手段足够的响应时间。
+
+            ### 瞬发跳变
+
+            引入反应性 ρ 后，在 ~10⁻⁴ s 内功率跳变到：
+            $$P_{{jump}} = P_0 \\cdot \\frac{{\\beta}}{{\\beta - \\rho}}$$
+
+            跳变后，功率以渐近周期变化，周期由 **倒时方程** 决定。
+
+            ### 当前场景分析
+
+            | 指标 | 值 |
+            |------|-----|
+            | 最终反应性 | {rho_final * 1e5:.0f} pcm = {rho_final / beta:.2f} $ |
+            | 最终功率 | {P_final:.4f} P₀ |
+            | 渐近周期 | {T_asym:.1f} s |
+            | 求解器信息 | {result.info} |
             """)
 
 # ===== 底部 =====
