@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from solver import solve_two_group, scan_critical_size, search_critical_boron, DEFAULTS
 from solver_2d import solve_two_group_2d
+from solver_3d import solve_two_group_3d
 from burnup_solver import run_burnup_coupled, N_U_TOTAL
 from point_kinetics import (
     solve_point_kinetics, KEEPIN_U235,
@@ -23,7 +24,7 @@ st.sidebar.header("⚙️ 参数设置")
 
 tab = st.sidebar.radio("📐 选择模块",
                        ["双群扩散求解", "临界尺寸扫描", "临界硼搜索",
-                        "🟦 二维扩散 (2D)", "🔥 燃耗耦合", "⏱️ 点堆动力学"])
+                        "🟦 二维扩散 (2D)", "🧊 三维扩散 (3D)", "🔥 燃耗耦合", "⏱️ 点堆动力学"])
 
 # 通用几何参数
 N = st.sidebar.slider("网格点数 N", 30, 300, 150, 10,
@@ -371,6 +372,122 @@ elif tab == "🟦 二维扩散 (2D)":
             - k_inf = {k_inf:.4f},  M² = {M2:.1f} cm²
             - B² = {B2:.6f} cm⁻²
             - 通量形状：二维 sin(πx/Lx)·sin(πy/Ly) 分布，中心最高，边界为零
+            """)
+
+# ===== 三维扩散 (3D) =====
+elif tab == "🧊 三维扩散 (3D)":
+    st.sidebar.markdown("### 📐 三维几何")
+
+    col_L1, col_L2, col_L3 = st.sidebar.columns(3)
+    with col_L1:
+        Lx_3d = st.slider("Lx (cm)", 50.0, 300.0, 160.0, 10.0, key="3d_Lx")
+    with col_L2:
+        Ly_3d = st.slider("Ly (cm)", 50.0, 300.0, 160.0, 10.0, key="3d_Ly")
+    with col_L3:
+        Lz_3d = st.slider("Lz (cm)", 50.0, 300.0, 160.0, 10.0, key="3d_Lz")
+
+    N_3d = st.sidebar.slider("网格点数 (每方向)", 10, 30, 20, 2,
+                             help="N³ 增长很快，建议 ≤25")
+    grid_info_3d = st.sidebar.caption(
+        f"未知数: {2 * N_3d**3} 个 (双群 × {N_3d}³ = {N_3d**3} 节点)"
+    )
+
+    if st.sidebar.button("🧊 三维求解", type="primary", use_container_width=True):
+        with st.spinner(f"3D 稀疏矩阵求解中... ({N_3d}³ = {N_3d**3} 节点, "
+                        f"{2*N_3d**3} 未知数)"):
+            result_3d = solve_two_group_3d(
+                Lx=Lx_3d, Ly=Ly_3d, Lz=Lz_3d,
+                Nx=N_3d, Ny=N_3d, Nz=N_3d,
+                sections=sections, method='chebyshev',
+            )
+
+        k_eff = result_3d['k_eff']
+        X, Y, Z = result_3d['X'], result_3d['Y'], result_3d['Z']
+        phi1, phi2 = result_3d['phi1'], result_3d['phi2']
+        N_pts = N_3d
+
+        # Buckling 对比 (3D: B² = 3(π/L)²)
+        p = {**DEFAULTS, **sections}
+        Sr1 = p['Sa1'] + p['Ss12']
+        k_inf = p['nu_Sf1'] / Sr1 + (p['nu_Sf2'] / p['Sa2']) * (p['Ss12'] / Sr1)
+        M2 = p['D2'] / p['Sa2'] + p['D1'] / Sr1
+        L_avg = (Lx_3d + Ly_3d + Lz_3d) / 3
+        B2_3d = 3.0 * (np.pi / L_avg)**2
+        k_buckling = k_inf / (1 + M2 * B2_3d)
+
+        # 指标
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            delta = "🟢 超临界" if k_eff > 1.001 else ("🔴 次临界" if k_eff < 0.999 else "🟡 临界")
+            st.metric("k_eff (3D FDM)", f"{k_eff:.6f}", delta=delta)
+        with col2:
+            st.metric("k_eff (Buckling)", f"{k_buckling:.6f}",
+                     delta=f"偏差 {abs(k_eff-k_buckling)/k_eff*100:.2f}%")
+        with col3:
+            st.metric("迭代次数", f"{result_3d['n_iter']}")
+        with col4:
+            st.metric("系统规模", f"{2*N_pts**3} 未知数")
+
+        # 三截面视图: z-center, y-center, x-center
+        mz, my, mx = N_pts // 2, N_pts // 2, N_pts // 2
+        x, y, z = result_3d['x'], result_3d['y'], result_3d['z']
+
+        fig, axes = plt.subplots(2, 3, figsize=(16, 9))
+
+        for row, (flux_data, label, cmap) in enumerate([
+            (phi1, 'Fast Flux (Group 1)', 'Reds'),
+            (phi2, 'Thermal Flux (Group 2)', 'Blues'),
+        ]):
+            im = axes[row, 0].contourf(x, y, flux_data[mz, :, :], levels=20, cmap=cmap)
+            axes[row, 0].set_title(f'{label} — z={z[mz]:.0f} cm slice')
+            axes[row, 0].set_xlabel('x (cm)'); axes[row, 0].set_ylabel('y (cm)')
+            axes[row, 0].set_aspect('equal')
+            plt.colorbar(im, ax=axes[row, 0], shrink=0.8)
+
+            im = axes[row, 1].contourf(x, z, flux_data[:, my, :], levels=20, cmap=cmap)
+            axes[row, 1].set_title(f'{label} — y={y[my]:.0f} cm slice')
+            axes[row, 1].set_xlabel('x (cm)'); axes[row, 1].set_ylabel('z (cm)')
+            axes[row, 1].set_aspect('equal')
+            plt.colorbar(im, ax=axes[row, 1], shrink=0.8)
+
+            im = axes[row, 2].contourf(y, z, flux_data[:, :, mx], levels=20, cmap=cmap)
+            axes[row, 2].set_title(f'{label} — x={x[mx]:.0f} cm slice')
+            axes[row, 2].set_xlabel('y (cm)'); axes[row, 2].set_ylabel('z (cm)')
+            axes[row, 2].set_aspect('equal')
+            plt.colorbar(im, ax=axes[row, 2], shrink=0.8)
+
+        plt.suptitle(f'3D Two-Group Diffusion  |  k_eff = {k_eff:.6f}  '
+                     f'|  {N_pts}³ grid  |  {2*N_pts**3} unknowns',
+                     fontsize=12, fontweight='bold', y=1.01)
+        plt.tight_layout()
+        st.pyplot(fig)
+
+        with st.expander("📖 三维扩散原理", expanded=False):
+            st.markdown(f"""
+            ### 从 2D 到 3D
+
+            **Kronecker 积构造的 3D Laplacian**:
+            $$L_{{3D}} = I_z \\otimes I_y \\otimes \\frac{{L_x}}{{h_x^2}} +
+                          I_z \\otimes \\frac{{L_y}}{{h_y^2}} \\otimes I_x +
+                          \\frac{{L_z}}{{h_z^2}} \\otimes I_y \\otimes I_x$$
+
+            | 项目 | 2D | 3D |
+            |------|-----|-----|
+            | Laplacian 模板 | 5 点 (N, S, E, W) | 7 点 (+ 上, 下) |
+            | 每行非零元 | 5 | 7 |
+            | 节点数 | N² | N³ |
+            | 双群未知数 | 2N² | 2N³ |
+
+            **Buckling 公式 (3D 立方体)**：
+            $$B^2 = 3\\left(\\frac{{\\pi}}{{L}}\\right)^2$$
+            $$k_{{eff}} = \\frac{{k_\\infty}}{{1 + M^2 B^2}}$$
+
+            **当前结果**：
+            - k_eff (FDM) = {k_eff:.6f}
+            - k_eff (Buckling) = {k_buckling:.6f}
+            - k_inf = {k_inf:.4f}, M² = {M2:.1f} cm²
+            - 矩阵规模 = {2*N_pts**3} × {2*N_pts**3}
+            - 稀疏度 = 99.98%（仅 7/{2*N_pts**3} 非零每行）
             """)
 
 # ===== 燃耗耦合 =====

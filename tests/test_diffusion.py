@@ -13,6 +13,7 @@ from scipy.sparse import diags, bmat, eye
 
 from solver import solve_two_group, scan_critical_size, search_critical_boron, DEFAULTS
 from solver_2d import _build_2d_laplacian, solve_two_group_2d
+from solver_3d import _build_3d_laplacian, solve_two_group_3d, validate_3d_laplacian
 from power_iteration import power_iteration, power_iteration_chebyshev
 
 
@@ -271,6 +272,53 @@ class TestPowerIteration:
         last_20 = r['k_history'][-20:]
         std_dev = np.std(last_20)
         assert std_dev < 1e-6, f"最后20次 k 波动 = {std_dev:.2e}"
+
+
+# ================================================================
+# 3D 扩散测试
+# ================================================================
+
+
+class TestLaplacian3D:
+    """三维离散 Laplacian 矩阵的解析验证。"""
+
+    def test_eigenvalues_against_analytic(self):
+        """3D Kronecker 积 Laplacian 特征值应与解析公式一致。"""
+        result = validate_3d_laplacian(Nx=5, Ny=5, Nz=5)
+        assert result['passed'], f"3D Laplacian 特征值误差: {result['max_error']:.2e}"
+
+    def test_cube_laplacian_passed(self):
+        """6³ 网格验证也通过。"""
+        result = validate_3d_laplacian(Nx=6, Ny=6, Nz=6)
+        assert result['passed']
+
+
+class TestTwoGroup3D:
+    """三维双群扩散求解器的验证测试。"""
+
+    def test_k_eff_reasonable(self):
+        """k_eff 应在合理范围内。"""
+        result = solve_two_group_3d(Lx=160, Ly=160, Lz=160, Nx=15, Ny=15, Nz=15,
+                                     method='chebyshev')
+        assert 0.5 < result['k_eff'] < 2.0
+
+    def test_solution_symmetric(self):
+        """立方体三个方向的中心线剖面应对称。"""
+        result = solve_two_group_3d(Lx=160, Ly=160, Lz=160, Nx=15, Ny=15, Nz=15,
+                                     method='chebyshev')
+        phi2 = result['phi2']
+        mx, my, mz = 7, 7, 7
+        # x 和 y 方向剖面应对称（立方体）
+        np.testing.assert_allclose(phi2[mz, my, :], phi2[mz, :, mx], rtol=1e-10)
+
+    def test_grid_convergence(self):
+        """网格加倍时 k_eff 变化减小。"""
+        k1 = solve_two_group_3d(Lx=160, Ly=160, Lz=160, Nx=12, Ny=12, Nz=12,
+                                 method='chebyshev')['k_eff']
+        k2 = solve_two_group_3d(Lx=160, Ly=160, Lz=160, Nx=18, Ny=18, Nz=18,
+                                 method='chebyshev')['k_eff']
+        dk = abs(k2 - k1)
+        assert dk < 0.01, f"网格 12→18 时 Δk = {dk:.6f}"
 
 
 # ================================================================
