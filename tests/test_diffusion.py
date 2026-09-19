@@ -60,6 +60,18 @@ class TestTwoGroup1D:
         result = solve_two_group(L=200, N=150)
         assert 0.5 < result['k_eff'] < 2.0
 
+    @pytest.mark.parametrize(("kwargs", "message"), [
+        ({"L": 0}, "L must be a finite positive number"),
+        ({"N": 1.5}, "N must be an integer"),
+        ({"sections": {"D1": -1}}, "D1 must be a finite positive number"),
+        ({"sections": {"Ss12": -0.01}}, "Ss12 must be a finite non-negative number"),
+        ({"sections": {"nu_Sf1": 0, "nu_Sf2": 0}}, "At least one fission"),
+    ])
+    def test_invalid_inputs_raise_clear_errors(self, kwargs, message):
+        """无效的一维几何、网格和截面应在组装矩阵前失败。"""
+        with pytest.raises(ValueError, match=message):
+            solve_two_group(**kwargs)
+
     def test_flux_shape_symmetric(self):
         """通量分布应对称（中心两侧相等）。"""
         result = solve_two_group(L=200, N=100)
@@ -329,6 +341,15 @@ class TestTwoGroup3D:
         result = solve_two_group_3d(Lx=160, Ly=160, Lz=160, Nx=15, Ny=15, Nz=15,
                                      method='chebyshev')
         assert 0.5 < result['k_eff'] < 2.0
+
+    def test_2d_and_3d_reject_invalid_geometry_early(self):
+        """高维求解器也应提供同样明确的输入错误。"""
+        with pytest.raises(ValueError, match="Nx must be an integer"):
+            solve_two_group_2d(Nx=0)
+        with pytest.raises(ValueError, match="Lz must be a finite positive number"):
+            solve_two_group_3d(Lz=-10)
+        with pytest.raises(ValueError, match="method must be 'power' or 'chebyshev'"):
+            solve_two_group_3d(method='invalid')
 
     def test_solution_symmetric(self):
         """立方体三个方向的中心线剖面应对称。"""

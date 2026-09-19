@@ -12,7 +12,7 @@ import numpy as np
 from scipy.sparse import diags, kron, eye, bmat, csr_matrix
 
 # 复用 solver.py 的默认截面数据
-from solver import DEFAULTS
+from solver import DEFAULTS, validate_iteration_controls, validate_two_group_inputs
 from power_iteration import power_iteration, power_iteration_chebyshev
 
 
@@ -84,10 +84,14 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
     }
     """
     p = {**DEFAULTS, **(sections or {})}
-    Lx = Lx or p.get('Lx', p['L'])
-    Ly = Ly or p.get('Ly', p['L'])
-    Nx = Nx or p.get('Nx', p['N'])
-    Ny = Ny or p.get('Ny', p['N'])
+    Lx = p.get('Lx', p['L']) if Lx is None else Lx
+    Ly = p.get('Ly', p['L']) if Ly is None else Ly
+    Nx = p.get('Nx', p['N']) if Nx is None else Nx
+    Ny = p.get('Ny', p['N']) if Ny is None else Ny
+    validate_two_group_inputs({'Lx': Lx, 'Ly': Ly}, {'Nx': Nx, 'Ny': Ny}, p)
+    validate_iteration_controls(max_iter, tol)
+    if method not in ('power', 'chebyshev'):
+        raise ValueError("method must be 'power' or 'chebyshev'.")
 
     # Nx/Ny are interior-node counts. The boundary nodes at 0 and L are
     # excluded from the unknown vector, hence N+1 intervals per direction.
@@ -124,9 +128,6 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
         result = power_iteration(A, F, phi0, max_iter=max_iter, tol=tol)
     elif method == 'chebyshev':
         result = power_iteration_chebyshev(A, F, phi0, max_iter=max_iter, tol=tol, warmup=15)
-    else:
-        raise ValueError(f"Unknown method: {method}. Use 'power' or 'chebyshev'.")
-
     phi = result['phi']
     k_eff = result['k_eff']
 
