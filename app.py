@@ -60,9 +60,28 @@ def show_convergence_visualization(result):
                 help="小于 1 表示末次迭代仍在收缩；数值越小通常越快。")
     st.pyplot(build_convergence_figure(result))
 
+
+def show_solver_error(error):
+    """Present input and resource errors without exposing a Streamlit traceback."""
+    st.error("本次计算未启动：请检查左侧参数后重试。")
+    st.caption(str(error))
+    st.info("提示：降低 2D/3D 网格密度，或确认几何尺寸、迭代控制和截面数据均有效。")
+
+
 st.set_page_config(page_title="Neutron Diffusion Solver", page_icon="⚛️", layout="wide")
+st.markdown("""
+<style>
+    .block-container { max-width: 1280px; padding-top: 2rem; padding-bottom: 3rem; }
+    div[data-testid="stMetric"] {
+        background: rgba(28, 131, 225, 0.06); border: 1px solid rgba(28, 131, 225, 0.18);
+        border-radius: 0.65rem; padding: 0.7rem 0.85rem;
+    }
+    div[data-testid="stDownloadButton"] button { width: 100%; }
+    div[data-testid="stExpander"] { border-radius: 0.65rem; }
+</style>
+""", unsafe_allow_html=True)
 st.title("⚛️ 中子扩散方程求解器")
-st.caption("一维 & 二维 · 双群 · 有限差分法 · 幂迭代 · 点堆动力学  |  核工程交互式学习工具")
+st.caption("教学级反应堆物理计算 · 设置参数 → 执行求解 → 检查收敛 → 导出可复现结果")
 
 # ===== 侧边栏 =====
 st.sidebar.header("⚙️ 参数设置")
@@ -70,6 +89,7 @@ st.sidebar.header("⚙️ 参数设置")
 tab = st.sidebar.radio("📐 选择模块",
                        ["双群扩散求解", "临界尺寸扫描", "临界硼搜索",
                         "🟦 二维扩散 (2D)", "🧊 三维扩散 (3D)", "🔥 燃耗耦合", "⏱️ 点堆动力学"])
+st.sidebar.caption("操作顺序：设置参数 → 点击求解 → 查看收敛诊断 → 下载结果。")
 
 # 通用几何参数
 N = st.sidebar.slider("网格点数 N", 30, 300, 150, 10,
@@ -102,9 +122,14 @@ if tab == "双群扩散求解":
     L = st.sidebar.slider("平板半厚度 L (cm)", 20.0, 500.0, 200.0, 10.0)
 
     if st.sidebar.button("🔬 求解", type="primary", use_container_width=True):
-        with st.spinner("幂迭代中..."):
-            result = solve_two_group(L=L, N=N, sections=sections)
+        try:
+            with st.spinner("幂迭代中..."):
+                result = solve_two_group(L=L, N=N, sections=sections)
+        except ValueError as error:
+            show_solver_error(error)
+            st.stop()
 
+        st.subheader("一维双群计算结果")
         show_convergence_feedback(result)
         show_convergence_visualization(result)
         show_result_downloads(
@@ -314,9 +339,14 @@ elif tab == "🟦 二维扩散 (2D)":
     )
 
     if st.sidebar.button("🔬 二维求解", type="primary", use_container_width=True):
-        with st.spinner(f"稀疏矩阵求解中... ({Nx}×{Ny} 网格, {2*Nx*Ny} 未知数)"):
-            result = solve_two_group_2d(Lx=Lx, Ly=Ly, Nx=Nx, Ny=Ny, sections=sections)
+        try:
+            with st.spinner(f"稀疏矩阵求解中... ({Nx}×{Ny} 网格, {2*Nx*Ny} 未知数)"):
+                result = solve_two_group_2d(Lx=Lx, Ly=Ly, Nx=Nx, Ny=Ny, sections=sections)
+        except ValueError as error:
+            show_solver_error(error)
+            st.stop()
 
+        st.subheader("二维双群计算结果")
         show_convergence_feedback(result)
         show_convergence_visualization(result)
         show_result_downloads(
@@ -457,14 +487,19 @@ elif tab == "🧊 三维扩散 (3D)":
         st.sidebar.warning("当前 3D 网格接近安全上限，计算可能需要较长时间。")
 
     if st.sidebar.button("🧊 三维求解", type="primary", use_container_width=True):
-        with st.spinner(f"3D 稀疏矩阵求解中... ({N_3d}³ = {N_3d**3} 节点, "
-                        f"{2*N_3d**3} 未知数)"):
-            result_3d = solve_two_group_3d(
-                Lx=Lx_3d, Ly=Ly_3d, Lz=Lz_3d,
-                Nx=N_3d, Ny=N_3d, Nz=N_3d,
-                sections=sections, method='chebyshev',
-            )
+        try:
+            with st.spinner(f"3D 稀疏矩阵求解中... ({N_3d}³ = {N_3d**3} 节点, "
+                            f"{2*N_3d**3} 未知数)"):
+                result_3d = solve_two_group_3d(
+                    Lx=Lx_3d, Ly=Ly_3d, Lz=Lz_3d,
+                    Nx=N_3d, Ny=N_3d, Nz=N_3d,
+                    sections=sections, method='chebyshev',
+                )
+        except ValueError as error:
+            show_solver_error(error)
+            st.stop()
 
+        st.subheader("三维双群计算结果")
         show_convergence_feedback(result_3d)
         show_convergence_visualization(result_3d)
         show_result_downloads(
