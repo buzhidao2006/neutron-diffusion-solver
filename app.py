@@ -4,6 +4,10 @@ Streamlit 应用，支持双群求解、临界尺寸扫描、临界硼搜索、�
 """
 import streamlit as st
 import numpy as np
+from plotting import configure_matplotlib_fonts
+
+configure_matplotlib_fonts()
+
 import matplotlib.pyplot as plt
 from solver import solve_two_group, scan_critical_size, search_critical_boron, DEFAULTS
 from solver_2d import solve_two_group_2d
