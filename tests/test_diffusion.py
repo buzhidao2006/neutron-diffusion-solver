@@ -14,7 +14,7 @@ from scipy.sparse import diags, bmat, eye
 from solver import solve_two_group, scan_critical_size, search_critical_boron, DEFAULTS
 from solver_2d import _build_2d_laplacian, solve_two_group_2d
 from solver_3d import solve_two_group_3d, validate_3d_laplacian
-from power_iteration import power_iteration, power_iteration_chebyshev
+from power_iteration import ConvergenceError, power_iteration, power_iteration_chebyshev
 
 
 def _build_matrices_2g_1d(L_val=200.0, N_val=60, sections=None):
@@ -282,6 +282,24 @@ class TestPowerIteration:
         last_20 = r['k_history'][-20:]
         std_dev = np.std(last_20)
         assert std_dev < 1e-6, f"最后20次 k 波动 = {std_dev:.2e}"
+
+    def test_nonconvergence_returns_actionable_diagnostics(self):
+        """迭代预算不足时，应返回状态、末次误差和可操作说明。"""
+        result = power_iteration(self.A, self.F, np.ones(2 * self.N_val), max_iter=1)
+
+        assert not result['converged']
+        assert result['n_iter'] == 1
+        assert result['delta_k'] > 0
+        assert "did not converge" in result['termination_reason']
+        assert "Increase max_iter" in result['termination_reason']
+
+    def test_nonconvergence_can_raise_an_error(self):
+        """严格模式应阻止调用方意外使用未收敛结果。"""
+        with pytest.raises(ConvergenceError, match="did not converge within 1 iterations"):
+            power_iteration(
+                self.A, self.F, np.ones(2 * self.N_val), max_iter=1,
+                raise_on_nonconvergence=True,
+            )
 
 
 # ================================================================

@@ -155,6 +155,10 @@ def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
         'phi2': phi2_3d,
         'n_iter': result['n_iter'],
         'k_history': result['k_history'],
+        'residual': result['residual'],
+        'converged': result['converged'],
+        'delta_k': result['delta_k'],
+        'termination_reason': result['termination_reason'],
     }
 
 

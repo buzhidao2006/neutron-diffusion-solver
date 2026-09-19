@@ -3,6 +3,9 @@
 提供：双群求解、临界尺寸扫描、临界硼搜索
 """
 import numpy as np
+from scipy.sparse import csr_matrix
+
+from power_iteration import power_iteration
 
 
 # ============ 默认截面数据 (典型 PWR) ============
@@ -22,7 +25,8 @@ DEFAULTS = {
 }
 
 
-def solve_two_group(L=None, N=None, sections=None):
+def solve_two_group(L=None, N=None, sections=None, max_iter=300, tol=1e-10,
+                    raise_on_nonconvergence=False):
     """
     求解双群一维中子扩散方程，返回 k_eff 和通量分布。
 
@@ -31,6 +35,9 @@ def solve_two_group(L=None, N=None, sections=None):
     L : float, 平板半厚度 (cm)，默认 200
     N : int, 网格点数，默认 150
     sections : dict, 截面数据，可部分覆盖默认值
+    max_iter : int, 最大幂迭代次数
+    tol : float, k_eff 相对收敛容差
+    raise_on_nonconvergence : bool, 为真时迭代耗尽将抛出 ConvergenceError
 
     Returns
     -------
@@ -40,6 +47,9 @@ def solve_two_group(L=None, N=None, sections=None):
         'phi1': np.ndarray,    # 快群通量
         'phi2': np.ndarray,    # 热群通量
         'phi': np.ndarray,     # 完整通量向量 (2N,)
+        'n_iter': int,         # 实际迭代次数
+        'converged': bool,     # 是否满足收敛容差
+        'termination_reason': str,
     }
     """
     p = {**DEFAULTS, **(sections or {})}
@@ -65,32 +75,31 @@ def solve_two_group(L=None, N=None, sections=None):
     A12 = np.zeros((N, N))
     A21 = -Ss12 * np.eye(N)
     A22 = coeff2 * L_mat + Sa2 * np.eye(N)
-    A = np.vstack([np.hstack([A11, A12]), np.hstack([A21, A22])])
+    A = csr_matrix(np.vstack([np.hstack([A11, A12]), np.hstack([A21, A22])]))
 
     F11 = nu_Sf1 * np.eye(N)
     F12 = nu_Sf2 * np.eye(N)
-    F = np.vstack([np.hstack([F11, F12]), np.zeros((N, 2 * N))])
+    F = csr_matrix(np.vstack([np.hstack([F11, F12]), np.zeros((N, 2 * N))]))
 
-    # 幂迭代
-    phi = np.ones(2 * N)
-    k_eff = 1.0
-    for _ in range(100):
-        source = F @ phi
-        phi_new = np.linalg.solve(A, source)
-        k_new = np.sum(F @ phi_new) / np.sum(source)
-        phi = phi_new / np.max(phi_new)
-        if abs(k_new - k_eff) < 1e-8:
-            k_eff = k_new
-            break
-        k_eff = k_new
+    result = power_iteration(
+        A, F, np.ones(2 * N), max_iter=max_iter, tol=tol,
+        raise_on_nonconvergence=raise_on_nonconvergence,
+    )
+    phi = result['phi'] / np.max(result['phi'])
 
     x = np.arange(1, N + 1) * h
     return {
-        'k_eff': k_eff,
+        'k_eff': result['k_eff'],
         'x': x,
         'phi1': phi[:N],
         'phi2': phi[N:],
         'phi': phi,
+        'n_iter': result['n_iter'],
+        'k_history': result['k_history'],
+        'residual': result['residual'],
+        'converged': result['converged'],
+        'delta_k': result['delta_k'],
+        'termination_reason': result['termination_reason'],
     }
 
 

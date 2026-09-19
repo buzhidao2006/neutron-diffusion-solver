@@ -148,6 +148,9 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
         'n_iter': result['n_iter'],
         'k_history': result['k_history'],
         'residual': result['residual'],
+        'converged': result['converged'],
+        'delta_k': result['delta_k'],
+        'termination_reason': result['termination_reason'],
     }
 
 
