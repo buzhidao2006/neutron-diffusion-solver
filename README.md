@@ -77,6 +77,9 @@ neutron-diffusion-solver/
 ├── boron_search.py          # 临界硼浓度搜索（外迭代+内迭代嵌套）
 │
 ├── power_iteration.py       # 幂迭代 + Chebyshev 外推加速引擎
+├── visualization.py          # 收敛历史与残差诊断图
+├── result_export.py          # CSV 通量表与可复现 JSON 导出
+├── resource_guards.py        # 2D/3D 规模估算与安全上限
 ├── demo_chebyshev.py        # 收敛行为对比 + ω 参数扫描
 │
 ├── point_kinetics.py        # 点堆动力学（6 群缓发中子 + 倒时方程 + 反馈）
@@ -89,9 +92,10 @@ neutron-diffusion-solver/
 ├── validate_2d.py           # 二维解析验证（特征值 + buckling + 网格收敛）
 ├── neutron_diffusion_tutorial.ipynb  # Jupyter 教学版（扩散→点堆全链路）
 │
-├── tests/                   # 47 个 pytest 单元测试
+├── tests/                   # 78 个 pytest 单元测试
 │   ├── test_diffusion.py    # 扩散/临界/幂迭代/2D/3D 验证
 │   └── test_kinetics.py     # 点堆动力学验证
+├── docs/USAGE.md            # 安装、计算、导出与诊断使用指南
 ├── .github/workflows/test.yml  # GitHub Actions（lint + 测试）
 ├── requirements.txt         # 运行依赖
 ├── requirements-dev.txt     # 开发、测试与 lint 依赖
@@ -117,6 +121,15 @@ neutron-diffusion-solver/
 git clone https://github.com/buzhidao2006/neutron-diffusion-solver.git
 cd neutron-diffusion-solver
 pip install -r requirements.txt
+```
+
+推荐在独立虚拟环境中安装：
+
+```bash
+python -m venv .venv
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+# macOS / Linux: source .venv/bin/activate
+python -m pip install --upgrade pip
 ```
 
 若要运行测试或参与开发，安装开发依赖：
@@ -169,13 +182,15 @@ streamlit run app.py
 ```
 
 打开浏览器访问 `http://localhost:8501`，七个标签页：
-1. **一维单群** — 参数滑块 + 实时通量图
-2. **一维双群** — 快/热通量对比
-3. **临界设计** — 临界尺寸 + 硼浓度搜索
-4. **燃耗计算** — Bateman 衰变链 + 燃耗-扩散耦合
-5. **二维扩散** — 2D 通量 heatmap + 收敛分析
-6. **点堆动力学** — 6 群缓发中子瞬态与反应性场景
-7. **三维扩散** — 3D 双群扩散与正交截面可视化
+1. **双群扩散求解** — 一维快/热通量、热化比、收敛诊断与结果导出
+2. **临界尺寸扫描** — `k_eff` 与尺寸关系及 Buckling 对比
+3. **临界硼搜索** — 临界硼浓度与反应性价值
+4. **二维扩散 (2D)** — 通量云图、中心线剖面、资源估算与结果导出
+5. **三维扩散 (3D)** — 正交截面、资源保护、收敛诊断与结果导出
+6. **燃耗耦合** — Bateman 衰变链与燃耗-扩散耦合
+7. **点堆动力学** — 6 群缓发中子瞬态与反应性场景
+
+完整的安装、CLI、Web 操作、结果导出和收敛判读说明见 [使用指南](docs/USAGE.md)。
 
 ### 运行测试
 
