@@ -236,11 +236,12 @@ python3 main.py benchmark
 
 ## 测试与持续集成
 
-- **70 个单元测试**，覆盖扩散、点堆动力学与解析基准：
+- **78 个单元测试**，覆盖扩散、点堆动力学与解析基准：
   - `test_diffusion.py`（41 个）— 扩散求解器、输入参数校验、资源保护、临界搜索、幂迭代、收敛失败诊断、2D/3D Laplacian 解析验证、跨模块物理一致性
   - `test_kinetics.py`（18 个）— 点堆方程、倒时方程、瞬发跳变、弹棒事故
   - `test_benchmarks.py`（3 个）— 一维平板解析基准与网格收敛
   - `test_visualization.py`（4 个）— 收敛诊断图与收缩率计算
+  - `test_edge_cases.py`（8 个）— 资源上限、3D 导出、JSON 序列化与诊断边界条件
 - **GitHub Actions**：push / PR 到 `master`/`main` 时，自动运行 Ruff 静态检查，并在 Python 3.10 和 3.12 下运行 `pytest tests/ -v`
 
 ---
