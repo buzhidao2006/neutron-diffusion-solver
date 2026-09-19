@@ -158,7 +158,9 @@ if tab == "双群扩散求解":
             st.metric("热/快比 (平均)", f"{np.mean(phi2/phi1):.2f}")
 
         # 通量分布图
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
+        fig, (ax1, ax2) = plt.subplots(
+            1, 2, figsize=(14, 5.2), layout="constrained"
+        )
 
         ax1.plot(x, phi1, '#e74c3c', linewidth=2, label='快群 (Group 1)')
         ax1.plot(x, phi2, '#3498db', linewidth=2, label='热群 (Group 2)')
@@ -166,27 +168,36 @@ if tab == "双群扩散求解":
         ax1.fill_between(x, 0, phi2, color='#3498db', alpha=0.08)
         ax1.set_xlabel('位置 (cm)', fontsize=11)
         ax1.set_ylabel('中子通量 (归一化)', fontsize=11)
-        ax1.set_title(f'双群通量分布  |  k_eff = {k_eff:.6f}', fontsize=12, fontweight='bold')
-        ax1.legend(fontsize=10)
+        ax1.set_title(
+            f'双群通量分布  |  k_eff = {k_eff:.6f}',
+            fontsize=12, fontweight='bold', pad=14,
+        )
+        ax1.legend(loc='lower center', bbox_to_anchor=(0.5, 0.38), fontsize=10,
+                   frameon=True, framealpha=0.92)
         ax1.grid(True, alpha=0.25)
+        ax1.margins(x=0.04)
 
         ratio = phi2 / (phi1 + 1e-10)
         ax2.plot(x, ratio, '#2ecc71', linewidth=2)
         ax2.fill_between(x, 0, ratio, color='#2ecc71', alpha=0.08)
         ax2.set_xlabel('位置 (cm)', fontsize=11)
         ax2.set_ylabel('热/快通量比', fontsize=11)
-        ax2.set_title('热化程度 φ₂/φ₁', fontsize=12, fontweight='bold')
+        ax2.set_title(r'热化程度 $\phi_2/\phi_1$', fontsize=12, fontweight='bold', pad=14)
         ax2.grid(True, alpha=0.25)
+        ax2.margins(x=0.04)
+        ax2.set_ylim(0, max(float(np.max(ratio)) * 1.18, 0.01))
 
         # 标注
         center_idx = N // 2
         ax2.annotate(f'中心: {ratio[center_idx]:.2f}',
                      xy=(x[center_idx], ratio[center_idx]),
-                     xytext=(x[center_idx] + 30, ratio[center_idx] * 1.1),
-                     arrowprops=dict(arrowstyle='->', color='gray'),
-                     fontsize=9, color='gray')
+                     xytext=(0.97, 0.10), textcoords='axes fraction',
+                     ha='right', va='bottom',
+                     arrowprops=dict(arrowstyle='->', color='gray', lw=1.1),
+                     bbox=dict(boxstyle='round,pad=0.28', fc='white', ec='0.75', alpha=0.92),
+                     fontsize=9, color='#555555')
 
-        st.pyplot(fig)
+        st.pyplot(fig, use_container_width=True)
 
         # 物理解释
         with st.expander("📖 物理含义", expanded=False):
