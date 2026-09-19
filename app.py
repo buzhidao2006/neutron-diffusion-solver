@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from solver import solve_two_group, scan_critical_size, search_critical_boron, DEFAULTS
 from solver_2d import solve_two_group_2d
 from solver_3d import solve_two_group_3d
+from resource_guards import estimate_two_group_resources
 from burnup_solver import run_burnup_coupled, N_U_TOTAL
 from point_kinetics import (
     solve_point_kinetics, KEEPIN_U235,
@@ -269,8 +270,10 @@ elif tab == "🟦 二维扩散 (2D)":
     with col_N2:
         Ny = st.slider("Ny 网格", 20, 100, 60, 5, help="y 方向网格点数")
 
-    grid_info = st.sidebar.caption(
-        f"未知数: {2 * Nx * Ny} 个 (双群 × {Nx}×{Ny})"
+    resource_2d = estimate_two_group_resources(2, Nx, Ny)
+    st.sidebar.caption(
+        f"未知数: {resource_2d['unknowns']:,} 个（双群 × {Nx}×{Ny}）；"
+        f"估算工作内存约 {resource_2d['estimated_memory_mb']:.1f} MB"
     )
 
     if st.sidebar.button("🔬 二维求解", type="primary", use_container_width=True):
@@ -402,9 +405,13 @@ elif tab == "🧊 三维扩散 (3D)":
 
     N_3d = st.sidebar.slider("网格点数 (每方向)", 10, 30, 20, 2,
                              help="N³ 增长很快，建议 ≤25")
-    grid_info_3d = st.sidebar.caption(
-        f"未知数: {2 * N_3d**3} 个 (双群 × {N_3d}³ = {N_3d**3} 节点)"
+    resource_3d = estimate_two_group_resources(3, N_3d, N_3d, N_3d)
+    st.sidebar.caption(
+        f"未知数: {resource_3d['unknowns']:,} 个（双群 × {N_3d}³）；"
+        f"估算工作内存约 {resource_3d['estimated_memory_mb']:.1f} MB"
     )
+    if resource_3d['spatial_nodes'] > 25_000:
+        st.sidebar.warning("当前 3D 网格接近安全上限，计算可能需要较长时间。")
 
     if st.sidebar.button("🧊 三维求解", type="primary", use_container_width=True):
         with st.spinner(f"3D 稀疏矩阵求解中... ({N_3d}³ = {N_3d**3} 节点, "

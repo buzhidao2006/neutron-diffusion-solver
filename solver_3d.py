@@ -19,6 +19,7 @@ import numpy as np
 from scipy.sparse import diags, kron, eye, bmat, csr_matrix
 from solver import DEFAULTS, validate_iteration_controls, validate_two_group_inputs
 from power_iteration import power_iteration, power_iteration_chebyshev
+from resource_guards import guard_problem_size
 
 
 def _build_3d_laplacian(Nx, Ny, Nz, hx, hy, hz):
@@ -108,6 +109,7 @@ def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
     hy = Ly / (Ny + 1)
     hz = Lz / (Nz + 1)
     N_total = Nx * Ny * Nz
+    guard_problem_size(3, Nx, Ny, Nz)
 
     D1, nu_Sf1, Sa1, Ss12 = p['D1'], p['nu_Sf1'], p['Sa1'], p['Ss12']
     D2, nu_Sf2, Sa2 = p['D2'], p['nu_Sf2'], p['Sa2']

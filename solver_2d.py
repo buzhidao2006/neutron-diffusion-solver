@@ -14,6 +14,7 @@ from scipy.sparse import diags, kron, eye, bmat, csr_matrix
 # 复用 solver.py 的默认截面数据
 from solver import DEFAULTS, validate_iteration_controls, validate_two_group_inputs
 from power_iteration import power_iteration, power_iteration_chebyshev
+from resource_guards import guard_problem_size
 
 
 def _build_2d_laplacian(Nx, Ny, hx, hy):
@@ -98,6 +99,7 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
     hx = Lx / (Nx + 1)
     hy = Ly / (Ny + 1)
     N_total = Nx * Ny
+    guard_problem_size(2, Nx, Ny)
 
     D1, nu_Sf1, Sa1, Ss12 = p['D1'], p['nu_Sf1'], p['Sa1'], p['Ss12']
     D2, nu_Sf2, Sa2 = p['D2'], p['nu_Sf2'], p['Sa2']
