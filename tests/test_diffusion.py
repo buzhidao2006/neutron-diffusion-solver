@@ -14,6 +14,7 @@ from scipy.sparse import diags, bmat, eye
 from solver import solve_two_group, scan_critical_size, search_critical_boron, DEFAULTS
 from solver_2d import _build_2d_laplacian, solve_two_group_2d
 from solver_3d import solve_two_group_3d, validate_3d_laplacian
+from resource_guards import estimate_two_group_resources
 from power_iteration import ConvergenceError, power_iteration, power_iteration_chebyshev
 
 
@@ -350,6 +351,18 @@ class TestTwoGroup3D:
             solve_two_group_3d(Lz=-10)
         with pytest.raises(ValueError, match="method must be 'power' or 'chebyshev'"):
             solve_two_group_3d(method='invalid')
+
+    def test_resource_estimate_and_guards_prevent_oversized_solves(self):
+        """大网格应在稀疏矩阵分配前被拒绝，并给出规模估算。"""
+        estimate = estimate_two_group_resources(3, 20, 20, 20)
+        assert estimate['spatial_nodes'] == 8_000
+        assert estimate['unknowns'] == 16_000
+        assert estimate['estimated_memory_mb'] > 0
+
+        with pytest.raises(ValueError, match="exceeding the safe limit"):
+            solve_two_group_2d(Nx=400, Ny=300)
+        with pytest.raises(ValueError, match="exceeding the safe limit"):
+            solve_two_group_3d(Nx=32, Ny=32, Nz=32)
 
     def test_solution_symmetric(self):
         """立方体三个方向的中心线剖面应对称。"""
