@@ -13,7 +13,7 @@
 
 ## 项目概览
 
-这是一个从零开始构建的反应堆物理数值计算教学项目。一个月时间（2026.06.15 → 07.14），16 次提交，从 44 行的一维单群求解器，演进为覆盖**临界计算、燃耗分析、点堆动力学、三维双群扩散**的 4300+ 行准工业级代码，配套 47 个单元测试与 GitHub Actions 持续集成。
+这是一个从零开始构建的反应堆物理数值计算教学项目。一个月时间（2026.06.15 → 07.14），16 次提交，从 44 行的一维单群求解器，演进为覆盖**临界计算、燃耗分析、点堆动力学、三维双群扩散**的 4300+ 行代码，配套解析基准、单元测试与 GitHub Actions 持续集成。
 
 **核心能力**：有限差分法 · 幂迭代 · Chebyshev 外推加速 · 双群/三维扩散 · 点堆动力学 · 临界搜索 · Bateman 燃耗 · Kronecker 积稀疏矩阵 · 解析验证
 
@@ -135,7 +135,8 @@ python3 main.py boron-search    # 临界硼浓度搜索
 python3 main.py 2d              # 二维双群扩散
 python3 main.py 3d              # 三维双群扩散
 python3 main.py kinetics        # 点堆动力学演示
-python3 main.py test            # 运行 47 个测试
+python3 main.py benchmark       # 一维单群解析基准 + 网格收敛
+python3 main.py test            # 运行测试套件
 python3 main.py demo            # 运行所有演示
 ```
 
@@ -183,6 +184,16 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
+### 运行解析基准
+
+```bash
+python3 main.py benchmark
+```
+
+该命令使用均匀一维单群平板的基态解析解 ``sin(πx/L)``，对比矩阵计算、
+离散 FDM 解析特征值与连续解析特征值。输出的相对误差应随网格加密单调下降，
+用于验证矩阵组装和二阶空间收敛性。
+
 ---
 
 ## 技术栈
@@ -212,6 +223,7 @@ python -m pytest tests/ -v
 - ✅ 弹棒事故等反应性场景 + 简化温度反馈
 - ✅ 幂迭代 + Chebyshev 外推加速
 - ✅ 解析特征值验证（debug 方法论）
+- ✅ 一维单群平板解析基准 + 网格收敛性验证
 - ✅ 1D → 2D → 3D 扩展（Kronecker 积构造法）
 - ✅ 稀疏矩阵存储与求解（CSR 格式）
 
@@ -219,7 +231,7 @@ python -m pytest tests/ -v
 
 ## 测试与持续集成
 
-- **47 个单元测试**，分两大类：
+- **53 个单元测试**，覆盖扩散、点堆动力学与解析基准：
   - `test_diffusion.py`（29 个）— 扩散求解器、临界搜索、幂迭代、2D/3D Laplacian 解析验证、跨模块物理一致性
   - `test_kinetics.py`（18 个）— 点堆方程、倒时方程、瞬发跳变、弹棒事故
 - **GitHub Actions**：push / PR 到 `master`/`main` 时，自动运行 Ruff 静态检查，并在 Python 3.10 和 3.12 下运行 `pytest tests/ -v`
