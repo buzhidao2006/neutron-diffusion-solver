@@ -22,15 +22,44 @@ import numpy as np
 from scipy.sparse.linalg import spsolve
 
 
-def power_iteration(A, F, phi0, max_iter=300, tol=1e-10):
+class ConvergenceError(RuntimeError):
+    """Raised when an eigenvalue iteration exhausts its iteration budget."""
+
+
+def _validate_iteration_options(max_iter, tol):
+    """Validate common iteration controls before a linear solve is attempted."""
+    if max_iter < 1:
+        raise ValueError("max_iter must be at least 1.")
+    if tol <= 0:
+        raise ValueError("tol must be positive.")
+
+
+def _nonconvergence_message(method, max_iter, k_eff, delta_k, tol):
+    """Build an actionable diagnostic for an exhausted eigenvalue iteration."""
+    return (
+        f"{method} did not converge within {max_iter} iterations: "
+        f"k_eff={k_eff:.10g}, |delta_k|={delta_k:.3e}, tolerance={tol:.3e}. "
+        "Increase max_iter, relax tol, or use the Chebyshev method."
+    )
+
+
+def power_iteration(A, F, phi0, max_iter=300, tol=1e-10, raise_on_nonconvergence=False):
     """标准幂迭代 — 无加速基准。
 
-    Returns: k_eff, phi, n_iter, k_history, residual
+    Returns: k_eff, phi, n_iter, k_history, residual, converged, delta_k
+
+    Set ``raise_on_nonconvergence=True`` when a partially converged result is
+    not acceptable to the calling workflow.
     """
+    _validate_iteration_options(max_iter, tol)
     k_history, residual = [], []
     source = F @ phi0
-    source = source / np.linalg.norm(source)
+    source_norm = np.linalg.norm(source)
+    if not np.isfinite(source_norm) or source_norm == 0:
+        raise ValueError("Initial fission source must be finite and non-zero.")
+    source = source / source_norm
     k_eff = 1.0
+    delta_k = np.inf
 
     for n in range(max_iter):
         phi = spsolve(A, source)
@@ -40,18 +69,25 @@ def power_iteration(A, F, phi0, max_iter=300, tol=1e-10):
         res = np.linalg.norm(A @ phi - source_new / k_new) / np.linalg.norm(source_new)
         residual.append(res)
 
-        if abs(k_new - k_eff) < tol * abs(k_new):
+        delta_k = abs(k_new - k_eff)
+        if delta_k < tol * abs(k_new):
             return dict(k_eff=k_new, phi=phi, n_iter=n + 1,
-                        k_history=k_history, residual=residual)
+                        k_history=k_history, residual=residual, converged=True,
+                        delta_k=delta_k, termination_reason="converged")
 
         k_eff = k_new
         source = source_new / np.linalg.norm(source_new)
 
+    message = _nonconvergence_message("Power iteration", max_iter, k_eff, delta_k, tol)
+    if raise_on_nonconvergence:
+        raise ConvergenceError(message)
     return dict(k_eff=k_eff, phi=phi, n_iter=max_iter,
-                k_history=k_history, residual=residual)
+                k_history=k_history, residual=residual, converged=False,
+                delta_k=delta_k, termination_reason=message)
 
 
-def power_iteration_chebyshev(A, F, phi0, max_iter=200, tol=1e-10, warmup=15):
+def power_iteration_chebyshev(A, F, phi0, max_iter=200, tol=1e-10, warmup=15,
+                              raise_on_nonconvergence=False):
     """Chebyshev 多项式外推加速的幂迭代。
 
     算法
@@ -71,15 +107,22 @@ def power_iteration_chebyshev(A, F, phi0, max_iter=200, tol=1e-10, warmup=15):
 
     Returns
     -------
-    dict: k_eff, phi, n_iter, k_history, residual, rho_history, omega_history
+    dict: k_eff, phi, n_iter, k_history, residual, rho_history, omega_history,
+    converged, delta_k
     """
+    _validate_iteration_options(max_iter, tol)
+    if warmup < 0:
+        raise ValueError("warmup cannot be negative.")
     k_history, residual = [], []
     rho_history, omega_history = [], []
     norm_sources = []
 
     # ---- 初始源 ----
     s_prev = F @ phi0
-    s_prev_n = s_prev / np.linalg.norm(s_prev)
+    initial_norm = np.linalg.norm(s_prev)
+    if not np.isfinite(initial_norm) or initial_norm == 0:
+        raise ValueError("Initial fission source must be finite and non-zero.")
+    s_prev_n = s_prev / initial_norm
     norm_sources.append(s_prev_n)
 
     # ---- 第一步 PI ----
@@ -92,9 +135,11 @@ def power_iteration_chebyshev(A, F, phi0, max_iter=200, tol=1e-10, warmup=15):
     s_cur_n = s_cur / np.linalg.norm(s_cur)
     norm_sources.append(s_cur_n)
 
-    if abs(k_eff - 1.0) < tol:
+    delta_k = abs(k_eff - 1.0)
+    if delta_k < tol:
         return dict(k_eff=k_eff, phi=phi, n_iter=1, k_history=k_history,
-                    residual=residual, rho_history=[], omega_history=[])
+                    residual=residual, rho_history=[], omega_history=[],
+                    converged=True, delta_k=delta_k, termination_reason="converged")
 
     # ---- 主循环 ----
     rho_s = 0.93
@@ -109,10 +154,12 @@ def power_iteration_chebyshev(A, F, phi0, max_iter=200, tol=1e-10, warmup=15):
         res = np.linalg.norm(A @ phi - s_raw / k_new) / np.linalg.norm(s_raw)
         residual.append(res)
 
-        if abs(k_new - k_eff) < tol * abs(k_new):
+        delta_k = abs(k_new - k_eff)
+        if delta_k < tol * abs(k_new):
             return dict(k_eff=k_new, phi=phi, n_iter=n + 1,
                         k_history=k_history, residual=residual,
-                        rho_history=rho_history, omega_history=omega_history)
+                        rho_history=rho_history, omega_history=omega_history,
+                        converged=True, delta_k=delta_k, termination_reason="converged")
 
         # 归一化源
         s_raw_n = s_raw / np.linalg.norm(s_raw)
@@ -142,9 +189,14 @@ def power_iteration_chebyshev(A, F, phi0, max_iter=200, tol=1e-10, warmup=15):
         s_cur_n = s_acc_n
         k_eff = k_new
 
+    message = _nonconvergence_message("Chebyshev power iteration", max_iter, k_eff,
+                                      delta_k, tol)
+    if raise_on_nonconvergence:
+        raise ConvergenceError(message)
     return dict(k_eff=k_eff, phi=phi, n_iter=max_iter,
                 k_history=k_history, residual=residual,
-                rho_history=rho_history, omega_history=omega_history)
+                rho_history=rho_history, omega_history=omega_history,
+                converged=False, delta_k=delta_k, termination_reason=message)
 
 
 def _est_rho_source(norm_sources, tail=6):
