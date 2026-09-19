@@ -17,7 +17,7 @@ Kronecker 积构造法:
 
 import numpy as np
 from scipy.sparse import diags, kron, eye, bmat, csr_matrix
-from solver import DEFAULTS
+from solver import DEFAULTS, validate_iteration_controls, validate_two_group_inputs
 from power_iteration import power_iteration, power_iteration_chebyshev
 
 
@@ -89,12 +89,18 @@ def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
     }
     """
     p = {**DEFAULTS, **(sections or {})}
-    Lx = Lx or p.get('Lx', p['L'])
-    Ly = Ly or p.get('Ly', p['L'])
-    Lz = Lz or p.get('Lz', p['L'])
-    Nx = Nx or p.get('Nx', 25)
-    Ny = Ny or p.get('Ny', 25)
-    Nz = Nz or p.get('Nz', 25)
+    Lx = p.get('Lx', p['L']) if Lx is None else Lx
+    Ly = p.get('Ly', p['L']) if Ly is None else Ly
+    Lz = p.get('Lz', p['L']) if Lz is None else Lz
+    Nx = p.get('Nx', 25) if Nx is None else Nx
+    Ny = p.get('Ny', 25) if Ny is None else Ny
+    Nz = p.get('Nz', 25) if Nz is None else Nz
+    validate_two_group_inputs(
+        {'Lx': Lx, 'Ly': Ly, 'Lz': Lz}, {'Nx': Nx, 'Ny': Ny, 'Nz': Nz}, p,
+    )
+    validate_iteration_controls(max_iter, tol)
+    if method not in ('power', 'chebyshev'):
+        raise ValueError("method must be 'power' or 'chebyshev'.")
 
     # Nx/Ny/Nz are interior-node counts; the zero-flux boundaries are
     # excluded, giving N+1 intervals along each direction.
@@ -131,9 +137,6 @@ def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
     elif method == 'chebyshev':
         result = power_iteration_chebyshev(A, F, phi0, max_iter=max_iter,
                                            tol=tol, warmup=15)
-    else:
-        raise ValueError(f"Unknown method: {method}. Use 'power' or 'chebyshev'.")
-
     phi = result['phi']
     k_eff = result['k_eff']
 

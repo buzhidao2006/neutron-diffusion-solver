@@ -3,6 +3,7 @@
 提供：双群求解、临界尺寸扫描、临界硼搜索
 """
 import numpy as np
+from numbers import Real
 from scipy.sparse import csr_matrix
 
 from power_iteration import power_iteration
@@ -23,6 +24,44 @@ DEFAULTS = {
     'L': 200.0,        # 平板半厚度 (cm)
     'N': 150,          # 网格点数
 }
+
+
+def _validate_positive_number(name, value):
+    """Require a finite, strictly positive scalar model input."""
+    if isinstance(value, bool) or not isinstance(value, Real) or not np.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a finite positive number.")
+
+
+def _validate_grid_count(name, value):
+    """Require an integer count of interior grid nodes."""
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 1:
+        raise ValueError(f"{name} must be an integer of at least 1.")
+
+
+def validate_two_group_inputs(lengths, grids, sections):
+    """Validate geometry, grid, and cross-section inputs shared by all solvers."""
+    for name, value in lengths.items():
+        _validate_positive_number(name, value)
+    for name, value in grids.items():
+        _validate_grid_count(name, value)
+
+    positive_sections = ("D1", "D2", "Sa1", "Sa2")
+    nonnegative_sections = ("nu_Sf1", "nu_Sf2", "Ss12")
+    for name in positive_sections:
+        _validate_positive_number(name, sections[name])
+    for name in nonnegative_sections:
+        value = sections[name]
+        if (isinstance(value, bool) or not isinstance(value, Real) or
+                not np.isfinite(value) or value < 0):
+            raise ValueError(f"{name} must be a finite non-negative number.")
+    if sections["nu_Sf1"] == 0 and sections["nu_Sf2"] == 0:
+        raise ValueError("At least one fission production cross section must be positive.")
+
+
+def validate_iteration_controls(max_iter, tol):
+    """Validate iteration controls before assembling a potentially large system."""
+    _validate_grid_count("max_iter", max_iter)
+    _validate_positive_number("tol", tol)
 
 
 def solve_two_group(L=None, N=None, sections=None, max_iter=300, tol=1e-10,
@@ -53,8 +92,10 @@ def solve_two_group(L=None, N=None, sections=None, max_iter=300, tol=1e-10,
     }
     """
     p = {**DEFAULTS, **(sections or {})}
-    L = L or p['L']
-    N = N or p['N']
+    L = p['L'] if L is None else L
+    N = p['N'] if N is None else N
+    validate_two_group_inputs({'L': L}, {'N': N}, p)
+    validate_iteration_controls(max_iter, tol)
     # N unknowns are interior nodes; zero-flux Dirichlet boundaries are at
     # x=0 and x=L, so there are N+1 intervals.
     h = L / (N + 1)

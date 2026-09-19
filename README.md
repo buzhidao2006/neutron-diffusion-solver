@@ -223,6 +223,7 @@ python3 main.py benchmark
 - ✅ 弹棒事故等反应性场景 + 简化温度反馈
 - ✅ 幂迭代 + Chebyshev 外推加速
 - ✅ 收敛状态、末次 k_eff 变化量与严格失败诊断
+- ✅ 求解入口参数校验：几何尺寸、网格、迭代控制与两群截面
 - ✅ 解析特征值验证（debug 方法论）
 - ✅ 一维单群平板解析基准 + 网格收敛性验证
 - ✅ 1D → 2D → 3D 扩展（Kronecker 积构造法）
@@ -232,8 +233,8 @@ python3 main.py benchmark
 
 ## 测试与持续集成
 
-- **55 个单元测试**，覆盖扩散、点堆动力学与解析基准：
-  - `test_diffusion.py`（34 个）— 扩散求解器、临界搜索、幂迭代、收敛失败诊断、2D/3D Laplacian 解析验证、跨模块物理一致性
+- **61 个单元测试**，覆盖扩散、点堆动力学与解析基准：
+  - `test_diffusion.py`（40 个）— 扩散求解器、输入参数校验、临界搜索、幂迭代、收敛失败诊断、2D/3D Laplacian 解析验证、跨模块物理一致性
   - `test_kinetics.py`（18 个）— 点堆方程、倒时方程、瞬发跳变、弹棒事故
   - `test_benchmarks.py`（3 个）— 一维平板解析基准与网格收敛
 - **GitHub Actions**：push / PR 到 `master`/`main` 时，自动运行 Ruff 静态检查，并在 Python 3.10 和 3.12 下运行 `pytest tests/ -v`
