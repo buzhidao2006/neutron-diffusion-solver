@@ -9,7 +9,6 @@
 这是 debug_demo.py 的二维对应版本。
 """
 import numpy as np
-from scipy.sparse.linalg import eigsh
 from solver_2d import _build_2d_laplacian, solve_two_group_2d
 from solver import DEFAULTS
 

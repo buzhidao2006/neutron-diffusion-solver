@@ -99,7 +99,6 @@ def power_iteration_chebyshev(A, F, phi0, max_iter=200, tol=1e-10, warmup=15):
     # ---- 主循环 ----
     rho_s = 0.93
     omega = 1.50
-    acc_active = False
 
     for n in range(1, max_iter):
         # 一步 PI
@@ -126,7 +125,6 @@ def power_iteration_chebyshev(A, F, phi0, max_iter=200, tol=1e-10, warmup=15):
             omega = 2.0 / (2.0 - rho_s**2)
             s_acc_n = omega * s_raw_n + (1.0 - omega) * s_prev_n
             s_acc_n = s_acc_n / np.linalg.norm(s_acc_n)
-            acc_active = True
         elif n > warmup:
             omega_prev = omega
             omega = 1.0 / (1.0 - rho_s**2 * omega_prev / 4.0)

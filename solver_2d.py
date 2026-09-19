@@ -10,7 +10,6 @@
 """
 import numpy as np
 from scipy.sparse import diags, kron, eye, bmat, csr_matrix
-from scipy.sparse.linalg import spsolve
 
 # 复用 solver.py 的默认截面数据
 from solver import DEFAULTS

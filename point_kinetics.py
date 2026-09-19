@@ -43,7 +43,7 @@
 
 import numpy as np
 from scipy.integrate import solve_ivp
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Callable
 
 # ============ U-235 6 群缓发中子数据 (Keepin 1965) ============
@@ -216,7 +216,7 @@ def solve_point_kinetics(
             dense_output=False,
             events=[event_power_max, event_power_min],
         )
-    except (ValueError, OverflowError) as e:
+    except (ValueError, OverflowError):
         # 最后的备用方案: 缩短积分区间, 减少 max_step
         if t_span[1] - t_span[0] > 1.0:
             t_trunc = t_span[0] + (t_span[1] - t_span[0]) * 0.5
@@ -315,8 +315,6 @@ def inhour_equation(omega: float, rho: float, Lambda: float = LAMBDA_PROMPT,
 
     beta_i = beta_data['beta_i']
     lambda_i = beta_data['lambda_i']
-    beta = beta_data['beta']
-
     term_sum = np.sum(omega * beta_i / (omega + lambda_i))
     return rho - (omega * Lambda + term_sum)
 

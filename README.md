@@ -92,8 +92,10 @@ neutron-diffusion-solver/
 ├── tests/                   # 47 个 pytest 单元测试
 │   ├── test_diffusion.py    # 扩散/临界/幂迭代/2D/3D 验证
 │   └── test_kinetics.py     # 点堆动力学验证
-├── .github/workflows/test.yml  # GitHub Actions CI
-├── requirements.txt         # Python 依赖
+├── .github/workflows/test.yml  # GitHub Actions（lint + 测试）
+├── requirements.txt         # 运行依赖
+├── requirements-dev.txt     # 开发、测试与 lint 依赖
+├── pyproject.toml           # Ruff 与 pytest 配置
 └── NOTES.md                 # 完整物理推导笔记
 ```
 
@@ -115,6 +117,12 @@ neutron-diffusion-solver/
 git clone https://github.com/buzhidao2006/neutron-diffusion-solver.git
 cd neutron-diffusion-solver
 pip install -r requirements.txt
+```
+
+若要运行测试或参与开发，安装开发依赖：
+
+```bash
+pip install -r requirements-dev.txt
 ```
 
 ### 统一 CLI 入口
@@ -171,6 +179,7 @@ streamlit run app.py
 ### 运行测试
 
 ```bash
+pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
@@ -184,7 +193,7 @@ python -m pytest tests/ -v
 | 可视化 | Matplotlib | 通量分布、收敛曲线、heatmap |
 | Web UI | Streamlit | 交互式参数调节 + 实时出图 |
 | 算法 | 有限差分法、幂迭代、Chebyshev 外推、二分法、Runge-Kutta | 核心求解 |
-| 工程化 | pytest, GitHub Actions, argparse | 测试、持续集成、命令行 |
+| 工程化 | pytest, Ruff, GitHub Actions, argparse | 测试、静态检查、持续集成、命令行 |
 
 ---
 
@@ -213,7 +222,7 @@ python -m pytest tests/ -v
 - **47 个单元测试**，分两大类：
   - `test_diffusion.py`（29 个）— 扩散求解器、临界搜索、幂迭代、2D/3D Laplacian 解析验证、跨模块物理一致性
   - `test_kinetics.py`（18 个）— 点堆方程、倒时方程、瞬发跳变、弹棒事故
-- **GitHub Actions**：push / PR 到 `master`/`main` 时，自动在 Python 3.10 和 3.12 下运行 `pytest tests/ -v`
+- **GitHub Actions**：push / PR 到 `master`/`main` 时，自动运行 Ruff 静态检查，并在 Python 3.10 和 3.12 下运行 `pytest tests/ -v`
 
 ---
 

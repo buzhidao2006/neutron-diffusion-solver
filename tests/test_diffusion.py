@@ -13,7 +13,7 @@ from scipy.sparse import diags, bmat, eye
 
 from solver import solve_two_group, scan_critical_size, search_critical_boron, DEFAULTS
 from solver_2d import _build_2d_laplacian, solve_two_group_2d
-from solver_3d import _build_3d_laplacian, solve_two_group_3d, validate_3d_laplacian
+from solver_3d import solve_two_group_3d, validate_3d_laplacian
 from power_iteration import power_iteration, power_iteration_chebyshev
 
 

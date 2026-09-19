@@ -12,8 +12,7 @@ from point_kinetics import (
     reactivity_step, reactivity_ramp, reactivity_sinusoidal,
     reactivity_rod_ejection,
     prompt_jump, asymptotic_period,
-    KEEPIN_U235, LAMBDA_PROMPT,
-    reactivity_with_feedback,
+    KEEPIN_U235,
 )
 
 plt.rcParams.update({
