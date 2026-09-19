@@ -1,5 +1,9 @@
 """Reusable numerical-diagnostics figures for diffusion solver results."""
 
+from plotting import configure_matplotlib_fonts
+
+configure_matplotlib_fonts()
+
 import matplotlib.pyplot as plt
 import numpy as np
 
