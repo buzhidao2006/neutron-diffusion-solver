@@ -17,7 +17,6 @@ Kronecker 积构造法:
 
 import numpy as np
 from scipy.sparse import diags, kron, eye, bmat, csr_matrix
-from scipy.sparse.linalg import spsolve
 from solver import DEFAULTS
 from power_iteration import power_iteration, power_iteration_chebyshev
 

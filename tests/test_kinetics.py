@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import pytest
 from point_kinetics import (
-    solve_point_kinetics, KEEPIN_U235, LAMBDA_PROMPT,
+    solve_point_kinetics, KEEPIN_U235,
     reactivity_step, reactivity_ramp, reactivity_sinusoidal,
     reactivity_rod_ejection,
     prompt_jump, asymptotic_period, inhour_equation,

@@ -31,7 +31,7 @@ def cmd_1d(args):
 
 def cmd_2g(args):
     """一维双群扩散求解。"""
-    from solver import solve_two_group, DEFAULTS
+    from solver import solve_two_group
 
     print("=" * 50)
     print("  一维双群扩散求解")

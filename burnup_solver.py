@@ -117,10 +117,6 @@ def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
         phi1 = result['phi1']  # 快群通量分布
         phi2 = result['phi2']  # 热群通量分布
 
-        # 平均通量 (用于 Bateman 步进)
-        avg_flux_fast = np.mean(phi1)   # 归一化通量, 需要缩放
-        avg_flux_thermal = np.mean(phi2)
-
         # === Step 3: 功率标定 ===
         # 归一化通量需要标定到实际物理通量
         # 典型 PWR: 平均热通量 ~3×10¹³ n/cm²/s
@@ -128,8 +124,6 @@ def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
         # 简化: 设定目标功率密度，标定通量幅度
         target_power_density = 100.0  # W/cm³ — 典型 PWR 功率密度
         energy_per_fission_J = 3.2e-11  # J/fission
-        power_per_fission_W = energy_per_fission_J  # W·s / fission → wrong unit
-
         # 功率密度 (W/cm³) = Σ_f(cm⁻¹) × φ(n/cm²/s) × E_f(J/fission)
         #  = Σ_f × φ × 3.2e-11 W/(n/cm²·s)? No, let's be more careful.
         # Actually: Power density = Σ_f × φ × E_f
