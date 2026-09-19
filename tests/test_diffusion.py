@@ -23,7 +23,7 @@ def _build_matrices_2g_1d(L_val=200.0, N_val=60, sections=None):
     if sections:
         p.update(sections)
 
-    h = L_val / N_val
+    h = L_val / (N_val + 1)
     coeff1 = p['D1'] / (h * h)
     coeff2 = p['D2'] / (h * h)
     Sr1 = p['Sa1'] + p['Ss12']
@@ -93,6 +93,11 @@ class TestTwoGroup1D:
         # 60→120 网格加倍，k 变化应 < 0.001
         assert dk < 0.002, f"Δk = {dk:.6f} > 0.002"
 
+    def test_grid_nodes_exclude_dirichlet_boundaries(self):
+        """内部节点应位于边界之间，并与标准 Dirichlet 网格一致。"""
+        result = solve_two_group(L=100, N=4)
+        np.testing.assert_allclose(result['x'], [20, 40, 60, 80])
+
 
 class TestCriticalSize:
     """临界尺寸扫描的验证测试。"""
@@ -142,6 +147,11 @@ class TestCriticalBoron:
         k_scan = np.array(cb['k_scan'])
         assert np.all(np.diff(k_scan) < 1e-10), "k(C_B) 应为单调递减"
 
+    def test_unbracketed_range_raises_error(self):
+        """没有夹住 k=1 的浓度区间不能进入二分法。"""
+        with pytest.raises(ValueError, match="does not bracket"):
+            search_critical_boron(L=200, N=80, C_range=(0, 10))
+
 
 # ================================================================
 # 2D 扩散测试
@@ -155,7 +165,7 @@ class TestLaplacian2D:
         """Kronecker积构造的2D Laplacian特征值应与解析公式一致。"""
         Nx, Ny = 8, 8
         Lx, Ly = 200.0, 200.0
-        hx, hy = Lx / Nx, Ly / Ny
+        hx, hy = Lx / (Nx + 1), Ly / (Ny + 1)
 
         L_2d = _build_2d_laplacian(Nx, Ny, hx, hy)
         L_dense = L_2d.toarray()
@@ -175,7 +185,7 @@ class TestLaplacian2D:
         """非正方形网格 (Nx ≠ Ny) 的特征值验证。"""
         Nx, Ny = 6, 10
         Lx, Ly = 150.0, 300.0
-        hx, hy = Lx / Nx, Ly / Ny
+        hx, hy = Lx / (Nx + 1), Ly / (Ny + 1)
 
         L_2d = _build_2d_laplacian(Nx, Ny, hx, hy)
         L_dense = L_2d.toarray()
@@ -319,6 +329,14 @@ class TestTwoGroup3D:
                                  method='chebyshev')['k_eff']
         dk = abs(k2 - k1)
         assert dk < 0.01, f"网格 12→18 时 Δk = {dk:.6f}"
+
+    def test_coordinate_arrays_match_flux_layout(self):
+        """3D 坐标数组必须与 (z, y, x) 通量布局一致。"""
+        result = solve_two_group_3d(Lx=100, Ly=120, Lz=140, Nx=3, Ny=4, Nz=5)
+        assert result['X'].shape == result['phi1'].shape == (5, 4, 3)
+        np.testing.assert_allclose(result['X'][0, 0, :], result['x'])
+        np.testing.assert_allclose(result['Y'][0, :, 0], result['y'])
+        np.testing.assert_allclose(result['Z'][:, 0, 0], result['z'])
 
 
 # ================================================================

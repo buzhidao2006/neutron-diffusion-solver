@@ -52,7 +52,7 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
     """
     求解二维双群中子扩散方程，返回 k_eff 和 2D 通量分布。
 
-    矩形区域 [0, Lx] × [0, Ly]，cell-centered 网格自动满足
+    矩形区域 [0, Lx] × [0, Ly]，使用内部节点网格自动满足
     零通量（Dirichlet）边界条件。
 
     Parameters
@@ -90,8 +90,10 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
     Nx = Nx or p.get('Nx', p['N'])
     Ny = Ny or p.get('Ny', p['N'])
 
-    hx = Lx / Nx
-    hy = Ly / Ny
+    # Nx/Ny are interior-node counts. The boundary nodes at 0 and L are
+    # excluded from the unknown vector, hence N+1 intervals per direction.
+    hx = Lx / (Nx + 1)
+    hy = Ly / (Ny + 1)
     N_total = Nx * Ny
 
     D1, nu_Sf1, Sa1, Ss12 = p['D1'], p['nu_Sf1'], p['Sa1'], p['Ss12']
@@ -130,8 +132,8 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
     k_eff = result['k_eff']
 
     # ---- 坐标与通量整形 ----
-    x = np.linspace(hx / 2, Lx - hx / 2, Nx)  # cell centers
-    y = np.linspace(hy / 2, Ly - hy / 2, Ny)
+    x = np.arange(1, Nx + 1) * hx
+    y = np.arange(1, Ny + 1) * hy
     X, Y = np.meshgrid(x, y)
 
     phi1_2d = phi[:N_total].reshape(Ny, Nx)

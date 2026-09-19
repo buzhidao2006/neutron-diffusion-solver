@@ -61,7 +61,7 @@ def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
     """
     求解三维双群中子扩散方程，返回 k_eff 和 3D 通量分布。
 
-    长方体区域 [0,Lx]×[0,Ly]×[0,Lz]，cell-centered 网格，
+    长方体区域 [0,Lx]×[0,Ly]×[0,Lz]，使用内部节点网格，
     零通量（Dirichlet）边界条件自动满足。
 
     Parameters
@@ -97,9 +97,11 @@ def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
     Ny = Ny or p.get('Ny', 25)
     Nz = Nz or p.get('Nz', 25)
 
-    hx = Lx / Nx
-    hy = Ly / Ny
-    hz = Lz / Nz
+    # Nx/Ny/Nz are interior-node counts; the zero-flux boundaries are
+    # excluded, giving N+1 intervals along each direction.
+    hx = Lx / (Nx + 1)
+    hy = Ly / (Ny + 1)
+    hz = Lz / (Nz + 1)
     N_total = Nx * Ny * Nz
 
     D1, nu_Sf1, Sa1, Ss12 = p['D1'], p['nu_Sf1'], p['Sa1'], p['Ss12']
@@ -137,10 +139,11 @@ def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
     k_eff = result['k_eff']
 
     # ---- 坐标与通量整形 ----
-    x = np.linspace(hx / 2, Lx - hx / 2, Nx)
-    y = np.linspace(hy / 2, Ly - hy / 2, Ny)
-    z = np.linspace(hz / 2, Lz - hz / 2, Nz)
-    X, Y, Z = np.meshgrid(x, y, z, indexing='xy')
+    x = np.arange(1, Nx + 1) * hx
+    y = np.arange(1, Ny + 1) * hy
+    z = np.arange(1, Nz + 1) * hz
+    # Flux is stored as (z, y, x), so coordinate arrays must use that layout.
+    Z, Y, X = np.meshgrid(z, y, x, indexing='ij')
 
     phi1_3d = phi[:N_total].reshape(Nz, Ny, Nx)
     phi2_3d = phi[N_total:].reshape(Nz, Ny, Nx)
@@ -166,7 +169,7 @@ def validate_3d_laplacian(Nx=6, Ny=6, Nz=6, Lx=200.0, Ly=200.0, Lz=200.0):
 
     用于验证矩阵构造正确性（debug_demo 方法论在 3D 的延续）。
     """
-    hx, hy, hz = Lx / Nx, Ly / Ny, Lz / Nz
+    hx, hy, hz = Lx / (Nx + 1), Ly / (Ny + 1), Lz / (Nz + 1)
 
     L_3d = _build_3d_laplacian(Nx, Ny, Nz, hx, hy, hz)
     L_dense = L_3d.toarray()

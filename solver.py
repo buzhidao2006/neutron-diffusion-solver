@@ -45,7 +45,9 @@ def solve_two_group(L=None, N=None, sections=None):
     p = {**DEFAULTS, **(sections or {})}
     L = L or p['L']
     N = N or p['N']
-    h = L / N
+    # N unknowns are interior nodes; zero-flux Dirichlet boundaries are at
+    # x=0 and x=L, so there are N+1 intervals.
+    h = L / (N + 1)
 
     D1, nu_Sf1, Sa1, Ss12 = p['D1'], p['nu_Sf1'], p['Sa1'], p['Ss12']
     D2, nu_Sf2, Sa2 = p['D2'], p['nu_Sf2'], p['Sa2']
@@ -82,7 +84,7 @@ def solve_two_group(L=None, N=None, sections=None):
             break
         k_eff = k_new
 
-    x = np.linspace(h / 2, L - h / 2, N)
+    x = np.arange(1, N + 1) * h
     return {
         'k_eff': k_eff,
         'x': x,
@@ -177,18 +179,19 @@ def search_critical_boron(L=200.0, N=150, alpha=1.0e-5, C_range=(0, 3000), secti
     k_scan = np.array([solve_keff_with_boron(C, L=L, N=N, alpha=alpha, sections=sections)
                         for C in C_scan])
 
-    # 二分法
+    # 二分法。二分法只有在区间两端夹住 k=1 时才有物理意义；若没有
+    # 临界点，继续迭代会返回一个看似合理、实际上错误的浓度。
     C_low, C_high = float(C_range[0]), float(C_range[1])
+    if C_low >= C_high:
+        raise ValueError("C_range must satisfy C_low < C_high.")
     k_low = solve_keff_with_boron(C_low, L=L, N=N, alpha=alpha, sections=sections)
     k_high = solve_keff_with_boron(C_high, L=L, N=N, alpha=alpha, sections=sections)
 
-    # 如果初始区间不对，调整
-    if k_low < 1.0:
-        C_low = max(0.0, C_low - 200)
-        k_low = solve_keff_with_boron(C_low, L=L, N=N, alpha=alpha, sections=sections)
-    if k_high > 1.0:
-        C_high = min(5000.0, C_high + 1500)
-        k_high = solve_keff_with_boron(C_high, L=L, N=N, alpha=alpha, sections=sections)
+    if not (k_low >= 1.0 >= k_high):
+        raise ValueError(
+            "C_range does not bracket a critical boron concentration: "
+            f"k({C_low:g})={k_low:.6f}, k({C_high:g})={k_high:.6f}."
+        )
 
     for _ in range(30):
         C_mid = (C_low + C_high) / 2
