@@ -10,6 +10,7 @@ neutron-diffusion-solver — 统一命令行入口
   python3 main.py 2d              # 二维双群扩散
   python3 main.py 3d              # 三维双群扩散
   python3 main.py kinetics        # 点堆动力学演示
+  python3 main.py benchmark       # 一维单群解析基准与网格收敛
   python3 main.py test            # 运行测试套件
   python3 main.py demo            # 运行所有演示
 """
@@ -131,6 +132,16 @@ def cmd_kinetics(args):
     exec(open(PROJECT_DIR / "demo_kinetics.py").read())
 
 
+def cmd_benchmark(args):
+    """运行一维单群平板解析基准。"""
+    from benchmarks.slab_one_group import convergence_study, format_convergence_study
+
+    print("=" * 74)
+    print("  一维单群平板扩散：解析基准与网格收敛")
+    print("=" * 74)
+    print(format_convergence_study(convergence_study(tuple(args.N_values))))
+
+
 def cmd_test(args):
     """运行 pytest 测试套件。"""
     print("=" * 50)
@@ -177,6 +188,7 @@ def main():
   python3 main.py critical-scan --L-min 40 --L-max 400
   python3 main.py 2d --Lx 200 --Nx 60
   python3 main.py 3d --L 160 --N 20
+  python3 main.py benchmark --N-values 20 40 80 160
   python3 main.py test
         """,
     )
@@ -233,6 +245,12 @@ def main():
     # kinetics
     p = subparsers.add_parser("kinetics", help="点堆动力学演示")
     p.set_defaults(func=cmd_kinetics)
+
+    # benchmark
+    p = subparsers.add_parser("benchmark", help="一维单群解析基准与网格收敛")
+    p.add_argument("--N-values", type=int, nargs="+", default=[20, 40, 80, 160],
+                   help="用于收敛研究的内部节点数")
+    p.set_defaults(func=cmd_benchmark)
 
     # test
     p = subparsers.add_parser("test", help="运行测试套件")
