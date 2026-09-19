@@ -15,6 +15,18 @@ from point_kinetics import (
     reactivity_rod_ejection, prompt_jump, asymptotic_period,
 )
 
+
+def show_convergence_feedback(result):
+    """Show numerical convergence status before presenting a solver result."""
+    n_iter = result["n_iter"]
+    delta_k = result["delta_k"]
+    if result["converged"]:
+        st.success(f"✅ 求解已收敛：{n_iter} 次迭代，末次 |Δk_eff| = {delta_k:.2e}。")
+    else:
+        st.error(f"⚠️ 求解未在 {n_iter} 次迭代内收敛；当前结果不应视为可靠计算结果。")
+        st.caption(result["termination_reason"])
+        st.info("建议：增大最大迭代次数、适度放宽容差，或改用 Chebyshev 加速方法。")
+
 st.set_page_config(page_title="Neutron Diffusion Solver", page_icon="⚛️", layout="wide")
 st.title("⚛️ 中子扩散方程求解器")
 st.caption("一维 & 二维 · 双群 · 有限差分法 · 幂迭代 · 点堆动力学  |  核工程交互式学习工具")
@@ -60,6 +72,7 @@ if tab == "双群扩散求解":
         with st.spinner("幂迭代中..."):
             result = solve_two_group(L=L, N=N, sections=sections)
 
+        show_convergence_feedback(result)
         k_eff = result['k_eff']
         x = result['x']
         phi1 = result['phi1']
@@ -264,6 +277,7 @@ elif tab == "🟦 二维扩散 (2D)":
         with st.spinner(f"稀疏矩阵求解中... ({Nx}×{Ny} 网格, {2*Nx*Ny} 未知数)"):
             result = solve_two_group_2d(Lx=Lx, Ly=Ly, Nx=Nx, Ny=Ny, sections=sections)
 
+        show_convergence_feedback(result)
         k_eff = result['k_eff']
         X, Y = result['X'], result['Y']
         phi1 = result['phi1']
@@ -401,6 +415,7 @@ elif tab == "🧊 三维扩散 (3D)":
                 sections=sections, method='chebyshev',
             )
 
+        show_convergence_feedback(result_3d)
         k_eff = result_3d['k_eff']
         X, Y, Z = result_3d['X'], result_3d['Y'], result_3d['Z']
         phi1, phi2 = result_3d['phi1'], result_3d['phi2']
