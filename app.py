@@ -10,6 +10,7 @@ from solver_2d import solve_two_group_2d
 from solver_3d import solve_two_group_3d
 from resource_guards import estimate_two_group_resources
 from result_export import result_to_csv_bytes, result_to_json_bytes
+from visualization import build_convergence_figure, final_convergence_rate
 from burnup_solver import run_burnup_coupled, N_U_TOTAL
 from point_kinetics import (
     solve_point_kinetics, KEEPIN_U235,
@@ -46,6 +47,18 @@ def show_result_downloads(result, model, inputs, file_stem):
             "下载可复现记录 JSON", json_data, f"{file_stem}.json", "application/json",
             key=f"{file_stem}_json",
         )
+
+
+def show_convergence_visualization(result):
+    """Render iteration-history diagnostics shared by the 1D, 2D, and 3D solvers."""
+    st.markdown("#### 📈 迭代诊断")
+    rate = final_convergence_rate(result)
+    col1, col2, col3 = st.columns(3)
+    col1.metric("迭代次数", result["n_iter"])
+    col2.metric("末次 |Δk_eff|", f"{result['delta_k']:.2e}")
+    col3.metric("末次收缩率", f"{rate:.3f}" if rate is not None else "—",
+                help="小于 1 表示末次迭代仍在收缩；数值越小通常越快。")
+    st.pyplot(build_convergence_figure(result))
 
 st.set_page_config(page_title="Neutron Diffusion Solver", page_icon="⚛️", layout="wide")
 st.title("⚛️ 中子扩散方程求解器")
@@ -93,6 +106,7 @@ if tab == "双群扩散求解":
             result = solve_two_group(L=L, N=N, sections=sections)
 
         show_convergence_feedback(result)
+        show_convergence_visualization(result)
         show_result_downloads(
             result, 'two_group_diffusion_1d',
             {'L_cm': L, 'N': N, 'sections': sections}, 'diffusion_1d_result',
@@ -304,6 +318,7 @@ elif tab == "🟦 二维扩散 (2D)":
             result = solve_two_group_2d(Lx=Lx, Ly=Ly, Nx=Nx, Ny=Ny, sections=sections)
 
         show_convergence_feedback(result)
+        show_convergence_visualization(result)
         show_result_downloads(
             result, 'two_group_diffusion_2d',
             {'Lx_cm': Lx, 'Ly_cm': Ly, 'Nx': Nx, 'Ny': Ny, 'sections': sections},
@@ -451,6 +466,7 @@ elif tab == "🧊 三维扩散 (3D)":
             )
 
         show_convergence_feedback(result_3d)
+        show_convergence_visualization(result_3d)
         show_result_downloads(
             result_3d, 'two_group_diffusion_3d',
             {'Lx_cm': Lx_3d, 'Ly_cm': Ly_3d, 'Lz_cm': Lz_3d, 'N': N_3d,
