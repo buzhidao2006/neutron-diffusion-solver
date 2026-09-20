@@ -6,7 +6,14 @@ import json
 
 import numpy as np
 
-from result_export import build_result_record, result_to_csv_bytes, result_to_json_bytes
+from result_export import (
+    build_burnup_record,
+    burnup_history_to_csv_bytes,
+    burnup_history_to_json_bytes,
+    build_result_record,
+    result_to_csv_bytes,
+    result_to_json_bytes,
+)
 
 
 def _sample_result():
@@ -74,3 +81,29 @@ def test_csv_export_flattens_2d_coordinate_meshes_with_fluxes():
     assert rows[0] == ['x', 'y', 'phi_fast', 'phi_thermal']
     assert rows[1] == ['10.0', '30.0', '1.0', '2.0']
     assert len(rows) == 5
+
+
+def test_burnup_exports_preserve_inputs_and_each_history_step():
+    history = {
+        'burnup': np.array([0.0, 5.0]),
+        'time_days': np.array([0.0, 42.0]),
+        'k_eff': np.array([1.05, 0.99]),
+        'flux_fast': np.array([1.0e13, 0.9e13]),
+        'flux_thermal': np.array([2.0e13, 1.8e13]),
+        'N_U235': np.array([0.04, 0.03]),
+    }
+    inputs = {'initial_enrichment': 0.04, 'N_grid': 100}
+    timestamp = '2026-01-01T00:00:00+00:00'
+
+    record = build_burnup_record(history, inputs, timestamp)
+    exported_json = json.loads(burnup_history_to_json_bytes(history, inputs, timestamp))
+    rows = list(csv.reader(StringIO(
+        burnup_history_to_csv_bytes(history, inputs, timestamp).decode('utf-8').split(
+            '# inputs=', 1,
+        )[1].split('\n', 1)[1],
+    )))
+
+    assert record['model'] == 'burnup_coupled_diffusion'
+    assert exported_json['history']['burnup'] == [0.0, 5.0]
+    assert rows[0][:3] == ['burnup_MWd_per_kgU', 'time_days', 'k_eff']
+    assert rows[2][2] == '0.99'
