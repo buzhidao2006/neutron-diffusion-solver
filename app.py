@@ -13,7 +13,12 @@ from solver import solve_two_group, scan_critical_size, search_critical_boron, D
 from solver_2d import solve_two_group_2d
 from solver_3d import solve_two_group_3d
 from resource_guards import estimate_two_group_resources
-from result_export import result_to_csv_bytes, result_to_json_bytes
+from result_export import (
+    burnup_history_to_csv_bytes,
+    burnup_history_to_json_bytes,
+    result_to_csv_bytes,
+    result_to_json_bytes,
+)
 from visualization import build_convergence_figure, final_convergence_rate
 from burnup_solver import run_burnup_coupled, N_U_TOTAL
 from point_kinetics import (
@@ -50,6 +55,22 @@ def show_result_downloads(result, model, inputs, file_stem):
         st.download_button(
             "下载可复现记录 JSON", json_data, f"{file_stem}.json", "application/json",
             key=f"{file_stem}_json",
+        )
+
+
+def show_burnup_downloads(history, inputs):
+    """Render portable exports for a coupled burnup history."""
+    st.markdown("#### 📥 导出燃耗历史")
+    csv_col, json_col = st.columns(2)
+    with csv_col:
+        st.download_button(
+            "下载燃耗历史 CSV", burnup_history_to_csv_bytes(history, inputs),
+            "burnup_history.csv", "text/csv", key="burnup_history_csv",
+        )
+    with json_col:
+        st.download_button(
+            "下载可复现记录 JSON", burnup_history_to_json_bytes(history, inputs),
+            "burnup_history.json", "application/json", key="burnup_history_json",
         )
 
 
@@ -639,6 +660,29 @@ elif tab == "🔥 燃耗耦合":
         idx_k1 = np.argmin(np.abs(k_eff - 1.0))
         bu_k1 = bu[idx_k1]
 
+        st.subheader("燃耗-扩散耦合计算结果")
+        completed_steps = max(len(bu) - 1, 0)
+        if k_eff[-1] < 0.95:
+            st.warning(
+                f"计算在第 {completed_steps} 个燃耗步提前结束：最终 k_eff = {k_eff[-1]:.4f}，"
+                "堆芯已进入深度次临界状态。"
+            )
+        else:
+            st.success(
+                f"耦合计算完成：{completed_steps} 个燃耗步，最终燃耗 {bu[-1]:.1f} MWd/kgU，"
+                f"最终 k_eff = {k_eff[-1]:.4f}。"
+            )
+        show_burnup_downloads(
+            hist,
+            {
+                'initial_enrichment': enrichment,
+                'L_cm': L_burn,
+                'N_grid': N,
+                'total_burnup_MWd_per_kgU': total_bu,
+                'n_burnup_steps': n_steps_burn,
+            },
+        )
+
         # 指标卡片
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -655,7 +699,7 @@ elif tab == "🔥 燃耗耦合":
                       delta=f"初始 {enrichment*100:.1f}%")
 
         # 四联图
-        fig, axes = plt.subplots(2, 2, figsize=(13, 10))
+        fig, axes = plt.subplots(2, 2, figsize=(14, 9), layout="constrained")
 
         # 图 1: k_eff vs burnup
         ax = axes[0, 0]
@@ -663,9 +707,9 @@ elif tab == "🔥 燃耗耦合":
         ax.axhline(y=1.0, color='k', linestyle=':', linewidth=1.5, label='k=1')
         ax.axvline(x=bu_k1, color='gray', linestyle='--', linewidth=1)
         ax.fill_between(bu, 0, k_eff, color='#e74c3c', alpha=0.06)
-        ax.set_xlabel('Burnup (MWd/kgU)')
+        ax.set_xlabel('燃耗 (MWd/kgU)')
         ax.set_ylabel('k_eff')
-        ax.set_title('Reactivity Depletion', fontweight='bold')
+        ax.set_title('反应性随燃耗变化', fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.25)
 
@@ -675,9 +719,9 @@ elif tab == "🔥 燃耗耦合":
         ax.plot(bu, hist['N_U238'] / N_U_TOTAL * 100, '#3498db', linewidth=2, label='U-238')
         ax.plot(bu, hist['N_Pu239'] / N_U_TOTAL * 100, '#2ecc71', linewidth=2, label='Pu-239')
         ax.plot(bu, hist['N_FP'] / N_U_TOTAL * 100, '#95a5a6', linewidth=2, label='FP')
-        ax.set_xlabel('Burnup (MWd/kgU)')
-        ax.set_ylabel('Nuclide Fraction (%)')
-        ax.set_title('Nuclide Evolution', fontweight='bold')
+        ax.set_xlabel('燃耗 (MWd/kgU)')
+        ax.set_ylabel('核素份额 (%)')
+        ax.set_title('核素演化', fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.25)
 
@@ -685,9 +729,9 @@ elif tab == "🔥 燃耗耦合":
         ax = axes[1, 0]
         ax.plot(bu, np.array(hist['flux_thermal']) / 1e13, '#e67e22', linewidth=2, label='Thermal')
         ax.plot(bu, np.array(hist['flux_fast']) / 1e13, '#9b59b6', linewidth=2, label='Fast')
-        ax.set_xlabel('Burnup (MWd/kgU)')
-        ax.set_ylabel('Avg Flux (x10^13 n/cm^2/s)')
-        ax.set_title('Flux Evolution', fontweight='bold')
+        ax.set_xlabel('燃耗 (MWd/kgU)')
+        ax.set_ylabel('平均通量 (×10¹³ n/cm²/s)')
+        ax.set_title('中子通量演化', fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.25)
 
@@ -695,14 +739,13 @@ elif tab == "🔥 燃耗耦合":
         ax = axes[1, 1]
         ax.plot(bu, hist['Sigma_a2'], '#c0392b', linewidth=2, label='Sigma_a2')
         ax.plot(bu, hist['Sigma_f2'], '#27ae60', linewidth=2, label='Sigma_f2')
-        ax.set_xlabel('Burnup (MWd/kgU)')
-        ax.set_ylabel('Macroscopic XS (cm^-1)')
-        ax.set_title('Cross Section Evolution', fontweight='bold')
+        ax.set_xlabel('燃耗 (MWd/kgU)')
+        ax.set_ylabel('宏观截面 (cm⁻¹)')
+        ax.set_title('截面演化', fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.25)
 
-        plt.tight_layout()
-        st.pyplot(fig)
+        st.pyplot(fig, use_container_width=True)
 
         with st.expander("📖 燃耗耦合原理", expanded=False):
             st.markdown(f"""
