@@ -1,15 +1,24 @@
 """Sizing estimates and safety limits for high-dimensional diffusion solves."""
 
-MAX_SPATIAL_NODES = {2: 100_000, 3: 30_000}
-ESTIMATED_BYTES_PER_NODE = {2: 512, 3: 1_024}
+from numbers import Integral
+
+MAX_SPATIAL_NODES = {1: 20_000, 2: 100_000, 3: 30_000}
+ESTIMATED_BYTES_PER_NODE = {1: 256, 2: 512, 3: 1_024}
 
 
 def estimate_two_group_resources(dimension, *grid_counts):
     """Return node, unknown, and approximate working-memory requirements."""
     if dimension not in MAX_SPATIAL_NODES:
-        raise ValueError("dimension must be 2 or 3.")
+        raise ValueError("dimension must be 1, 2, or 3.")
+    if len(grid_counts) != dimension:
+        raise ValueError(
+            f"dimension {dimension} requires {dimension} grid count(s), "
+            f"got {len(grid_counts)}."
+        )
     spatial_nodes = 1
     for count in grid_counts:
+        if isinstance(count, bool) or not isinstance(count, Integral) or count < 1:
+            raise ValueError("grid counts must be positive integers.")
         spatial_nodes *= count
     estimated_memory_mb = (
         spatial_nodes * ESTIMATED_BYTES_PER_NODE[dimension] / 1024 ** 2

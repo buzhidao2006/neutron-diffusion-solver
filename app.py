@@ -20,6 +20,8 @@ from result_export import (
     result_to_json_bytes,
 )
 from visualization import build_convergence_figure, final_convergence_rate
+from convergence import convergence_summary
+from power_iteration import ConvergenceError
 from burnup_solver import run_burnup_coupled, N_U_TOTAL
 from point_kinetics import (
     solve_point_kinetics, KEEPIN_U235,
@@ -30,14 +32,15 @@ from point_kinetics import (
 
 def show_convergence_feedback(result):
     """Show numerical convergence status before presenting a solver result."""
-    n_iter = result["n_iter"]
-    delta_k = result["delta_k"]
-    if result["converged"]:
+    summary = convergence_summary(result)
+    n_iter = summary["n_iter"]
+    delta_k = summary["delta_k"]
+    if summary["converged"]:
         st.success(f"✅ 求解已收敛：{n_iter} 次迭代，末次 |Δk_eff| = {delta_k:.2e}。")
     else:
         st.error(f"⚠️ 求解未在 {n_iter} 次迭代内收敛；当前结果不应视为可靠计算结果。")
-        st.caption(result["termination_reason"])
-        st.info("建议：增大最大迭代次数、适度放宽容差，或改用 Chebyshev 加速方法。")
+        st.caption(summary["termination_reason"])
+        st.info(f"建议：{summary['recommendation']}")
 
 
 def show_result_downloads(result, model, inputs, file_stem):
@@ -84,6 +87,14 @@ def show_convergence_visualization(result):
     col3.metric("末次收缩率", f"{rate:.3f}" if rate is not None else "—",
                 help="小于 1 表示末次迭代仍在收缩；数值越小通常越快。")
     st.pyplot(build_convergence_figure(result))
+
+
+def require_converged_result(result):
+    """Show diagnostics and stop before an unconverged result is used."""
+    show_convergence_feedback(result)
+    show_convergence_visualization(result)
+    if not result["converged"]:
+        st.stop()
 
 
 def show_solver_error(error):
@@ -150,13 +161,12 @@ if tab == "双群扩散求解":
         try:
             with st.spinner("幂迭代中..."):
                 result = solve_two_group(L=L, N=N, sections=sections)
-        except ValueError as error:
+        except (ValueError, ConvergenceError) as error:
             show_solver_error(error)
             st.stop()
 
         st.subheader("一维双群计算结果")
-        show_convergence_feedback(result)
-        show_convergence_visualization(result)
+        require_converged_result(result)
         show_result_downloads(
             result, 'two_group_diffusion_1d',
             {'L_cm': L, 'N': N, 'sections': sections}, 'diffusion_1d_result',
@@ -238,8 +248,14 @@ elif tab == "临界尺寸扫描":
     n_pts = st.sidebar.slider("扫描点数", 10, 50, 36, 2)
 
     if st.sidebar.button("🔬 扫描", type="primary", use_container_width=True):
-        with st.spinner("扫描不同尺寸..."):
-            cs = scan_critical_size(L_min=L_min, L_max=L_max, n_points=n_pts, N=N, sections=sections)
+        try:
+            with st.spinner("扫描不同尺寸..."):
+                cs = scan_critical_size(
+                    L_min=L_min, L_max=L_max, n_points=n_pts, N=N, sections=sections,
+                )
+        except (ValueError, ConvergenceError) as error:
+            show_solver_error(error)
+            st.stop()
 
         L_crit = cs['L_crit']
         k_crit = cs['k_crit']
@@ -299,8 +315,12 @@ elif tab == "临界硼搜索":
                                      DEFAULTS.get('alpha', 1.0e-5), 1e-6, format="%.1e")
 
     if st.sidebar.button("🔬 搜索", type="primary", use_container_width=True):
-        with st.spinner("二分法搜索临界硼浓度..."):
-            cb = search_critical_boron(L=L, N=N, alpha=alpha, sections=sections)
+        try:
+            with st.spinner("二分法搜索临界硼浓度..."):
+                cb = search_critical_boron(L=L, N=N, alpha=alpha, sections=sections)
+        except (ValueError, ConvergenceError) as error:
+            show_solver_error(error)
+            st.stop()
 
         # 指标
         col1, col2, col3 = st.columns(3)
@@ -377,14 +397,16 @@ elif tab == "🟦 二维扩散 (2D)":
     if st.sidebar.button("🔬 二维求解", type="primary", use_container_width=True):
         try:
             with st.spinner(f"稀疏矩阵求解中... ({Nx}×{Ny} 网格, {2*Nx*Ny} 未知数)"):
-                result = solve_two_group_2d(Lx=Lx, Ly=Ly, Nx=Nx, Ny=Ny, sections=sections)
-        except ValueError as error:
+                result = solve_two_group_2d(
+                    Lx=Lx, Ly=Ly, Nx=Nx, Ny=Ny, sections=sections,
+                    raise_on_nonconvergence=True,
+                )
+        except (ValueError, ConvergenceError) as error:
             show_solver_error(error)
             st.stop()
 
         st.subheader("二维双群计算结果")
-        show_convergence_feedback(result)
-        show_convergence_visualization(result)
+        require_converged_result(result)
         show_result_downloads(
             result, 'two_group_diffusion_2d',
             {'Lx_cm': Lx, 'Ly_cm': Ly, 'Nx': Nx, 'Ny': Ny, 'sections': sections},
@@ -427,18 +449,18 @@ elif tab == "🟦 二维扩散 (2D)":
         im1 = ax.contourf(X, Y, phi1, levels=20, cmap='Reds')
         ax.set_xlabel('x (cm)')
         ax.set_ylabel('y (cm)')
-        ax.set_title(f'Fast Flux (Group 1)', fontweight='bold')
+        ax.set_title('快群通量 φ₁（归一化）', fontweight='bold')
         ax.set_aspect('equal')
-        plt.colorbar(im1, ax=ax, shrink=0.8)
+        plt.colorbar(im1, ax=ax, shrink=0.8, label='归一化通量')
 
         # 图 2: 热群 heatmap
         ax = axes[0, 1]
         im2 = ax.contourf(X, Y, phi2, levels=20, cmap='Blues')
         ax.set_xlabel('x (cm)')
         ax.set_ylabel('y (cm)')
-        ax.set_title(f'Thermal Flux (Group 2)', fontweight='bold')
+        ax.set_title('热群通量 φ₂（归一化）', fontweight='bold')
         ax.set_aspect('equal')
-        plt.colorbar(im2, ax=ax, shrink=0.8)
+        plt.colorbar(im2, ax=ax, shrink=0.8, label='归一化通量')
 
         # 图 3: 中心线剖面
         ax = axes[1, 0]
@@ -452,8 +474,8 @@ elif tab == "🟦 二维扩散 (2D)":
         ax.plot(x_1d, theory * np.max(phi1[mid_y, :]), 'k--', linewidth=1, alpha=0.5,
                 label='sin(πx/L) 参考')
         ax.set_xlabel('x (cm)')
-        ax.set_ylabel('Normalized Flux')
-        ax.set_title('Centerline Profile (y = Ly/2)', fontweight='bold')
+        ax.set_ylabel('归一化通量')
+        ax.set_title('中心线剖面（y = Ly/2）', fontweight='bold')
         ax.legend(fontsize=8)
         ax.grid(True, alpha=0.25)
 
@@ -462,10 +484,10 @@ elif tab == "🟦 二维扩散 (2D)":
         im3 = ax.contourf(X, Y, ratio, levels=20, cmap='RdYlBu_r')
         ax.set_xlabel('x (cm)')
         ax.set_ylabel('y (cm)')
-        ax.set_title(f'Thermal / Fast Ratio  '
+        ax.set_title(f'热/快通量比  '
                      f'({np.min(ratio):.2f} – {np.max(ratio):.2f})', fontweight='bold')
         ax.set_aspect('equal')
-        plt.colorbar(im3, ax=ax, shrink=0.8)
+        plt.colorbar(im3, ax=ax, shrink=0.8, label='φ₂ / φ₁')
 
         plt.suptitle(f'2D Two-Group Diffusion  |  k_eff = {k_eff:.6f}  '
                      f'|  {Lx:.0f}×{Ly:.0f} cm  |  Grid {Nx}×{Ny}',
@@ -529,15 +551,14 @@ elif tab == "🧊 三维扩散 (3D)":
                 result_3d = solve_two_group_3d(
                     Lx=Lx_3d, Ly=Ly_3d, Lz=Lz_3d,
                     Nx=N_3d, Ny=N_3d, Nz=N_3d,
-                    sections=sections, method='chebyshev',
+                    sections=sections, method='chebyshev', raise_on_nonconvergence=True,
                 )
-        except ValueError as error:
+        except (ValueError, ConvergenceError) as error:
             show_solver_error(error)
             st.stop()
 
         st.subheader("三维双群计算结果")
-        show_convergence_feedback(result_3d)
-        show_convergence_visualization(result_3d)
+        require_converged_result(result_3d)
         show_result_downloads(
             result_3d, 'two_group_diffusion_3d',
             {'Lx_cm': Lx_3d, 'Ly_cm': Ly_3d, 'Lz_cm': Lz_3d, 'N': N_3d,
@@ -578,28 +599,28 @@ elif tab == "🧊 三维扩散 (3D)":
         fig, axes = plt.subplots(2, 3, figsize=(16, 9))
 
         for row, (flux_data, label, cmap) in enumerate([
-            (phi1, 'Fast Flux (Group 1)', 'Reds'),
-            (phi2, 'Thermal Flux (Group 2)', 'Blues'),
+            (phi1, '快群通量 φ₁（归一化）', 'Reds'),
+            (phi2, '热群通量 φ₂（归一化）', 'Blues'),
         ]):
             im = axes[row, 0].contourf(x, y, flux_data[mz, :, :], levels=20, cmap=cmap)
             axes[row, 0].set_title(f'{label} — z={z[mz]:.0f} cm slice')
             axes[row, 0].set_xlabel('x (cm)'); axes[row, 0].set_ylabel('y (cm)')
             axes[row, 0].set_aspect('equal')
-            plt.colorbar(im, ax=axes[row, 0], shrink=0.8)
+            plt.colorbar(im, ax=axes[row, 0], shrink=0.8, label='归一化通量')
 
             im = axes[row, 1].contourf(x, z, flux_data[:, my, :], levels=20, cmap=cmap)
             axes[row, 1].set_title(f'{label} — y={y[my]:.0f} cm slice')
             axes[row, 1].set_xlabel('x (cm)'); axes[row, 1].set_ylabel('z (cm)')
             axes[row, 1].set_aspect('equal')
-            plt.colorbar(im, ax=axes[row, 1], shrink=0.8)
+            plt.colorbar(im, ax=axes[row, 1], shrink=0.8, label='归一化通量')
 
             im = axes[row, 2].contourf(y, z, flux_data[:, :, mx], levels=20, cmap=cmap)
             axes[row, 2].set_title(f'{label} — x={x[mx]:.0f} cm slice')
             axes[row, 2].set_xlabel('y (cm)'); axes[row, 2].set_ylabel('z (cm)')
             axes[row, 2].set_aspect('equal')
-            plt.colorbar(im, ax=axes[row, 2], shrink=0.8)
+            plt.colorbar(im, ax=axes[row, 2], shrink=0.8, label='归一化通量')
 
-        plt.suptitle(f'3D Two-Group Diffusion  |  k_eff = {k_eff:.6f}  '
+        plt.suptitle(f'三维双群扩散  |  k_eff = {k_eff:.6f}  '
                      f'|  {N_pts}³ grid  |  {2*N_pts**3} unknowns',
                      fontsize=12, fontweight='bold', y=1.01)
         plt.tight_layout()
@@ -644,14 +665,18 @@ elif tab == "🔥 燃耗耦合":
                                       help="步数越多越精细，计算越慢")
 
     if st.sidebar.button("🔥 开始耦合计算", type="primary", use_container_width=True):
-        with st.spinner(f"燃耗-扩散耦合计算中... ({n_steps_burn} 步, 可能需要几十秒)"):
-            hist = run_burnup_coupled(
-                initial_enrichment=enrichment,
-                L=L_burn,
-                N_grid=N,
-                total_burnup=total_bu,
-                n_burnup_steps=n_steps_burn,
-            )
+        try:
+            with st.spinner(f"燃耗-扩散耦合计算中... ({n_steps_burn} 步, 可能需要几十秒)"):
+                hist = run_burnup_coupled(
+                    initial_enrichment=enrichment,
+                    L=L_burn,
+                    N_grid=N,
+                    total_burnup=total_bu,
+                    n_burnup_steps=n_steps_burn,
+                )
+        except (ValueError, ConvergenceError) as error:
+            show_solver_error(error)
+            st.stop()
 
         bu = hist['burnup']
         k_eff = hist['k_eff']

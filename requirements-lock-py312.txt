@@ -1,0 +1,8 @@
+# Generated from the verified CPython 3.12 environment on 2026-09-22.
+# Use requirements.txt for cross-version installation.
+streamlit==1.64.0
+numpy==2.3.5
+matplotlib==3.11.2
+scipy==1.18.1
+pytest==9.1.1
+ruff==0.16.8

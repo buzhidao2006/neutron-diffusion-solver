@@ -145,12 +145,39 @@ def solve_point_kinetics(
     -------
     PointKineticsResult
     """
+    if not callable(reactivity_func):
+        raise ValueError("reactivity_func must be callable.")
+    try:
+        t_start, t_end = (float(value) for value in t_span)
+    except (TypeError, ValueError):
+        raise ValueError("t_span must contain finite increasing start and end times.")
+    if (not isinstance(t_span, (tuple, list)) or len(t_span) != 2 or
+            not np.isfinite(t_start) or not np.isfinite(t_end) or t_end <= t_start):
+        raise ValueError("t_span must contain finite increasing start and end times.")
+    if not np.isfinite(Lambda) or Lambda <= 0:
+        raise ValueError("Lambda must be a finite positive number.")
+    if not np.isfinite(P0) or P0 <= 0:
+        raise ValueError("P0 must be a finite positive number.")
+    if not np.isfinite(max_step) or max_step <= 0:
+        raise ValueError("max_step must be a finite positive number.")
+    if not np.isfinite(P_max) or P_max <= P0:
+        raise ValueError("P_max must be finite and greater than P0.")
+    if not isinstance(method, str) or not method:
+        raise ValueError("method must be a non-empty solver name.")
     if beta_data is None:
         beta_data = KEEPIN_U235
 
-    beta_i = np.asarray(beta_data['beta_i'], dtype=float)
-    lambda_i = np.asarray(beta_data['lambda_i'], dtype=float)
-    beta = beta_data['beta']
+    try:
+        beta_i = np.asarray(beta_data['beta_i'], dtype=float)
+        lambda_i = np.asarray(beta_data['lambda_i'], dtype=float)
+        beta = float(beta_data['beta'])
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("beta_data must contain beta_i, lambda_i, and beta.")
+    if (beta_i.ndim != 1 or lambda_i.ndim != 1 or len(beta_i) == 0 or
+            beta_i.shape != lambda_i.shape or not np.all(np.isfinite(beta_i)) or
+            not np.all(np.isfinite(lambda_i)) or np.any(beta_i <= 0) or
+            np.any(lambda_i <= 0) or not np.isfinite(beta) or beta <= 0):
+        raise ValueError("beta_data must contain matching finite positive arrays.")
     n_groups = len(beta_i)
 
     # 初始稳态条件: dC_i/dt = 0

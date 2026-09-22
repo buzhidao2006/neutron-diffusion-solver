@@ -7,7 +7,8 @@ import json
 import numpy as np
 import pytest
 
-from resource_guards import guard_problem_size
+from resource_guards import estimate_two_group_resources, guard_problem_size
+from solver import scan_critical_size, search_critical_boron, solve_two_group
 from result_export import build_result_record, result_to_csv_bytes, result_to_json_bytes
 from visualization import build_convergence_figure, final_convergence_rate
 
@@ -25,8 +26,40 @@ def test_resource_guard_rejects_grid_just_above_3d_limit_with_shape():
 
 
 def test_resource_guard_rejects_unknown_dimension():
-    with pytest.raises(ValueError, match="dimension must be 2 or 3"):
-        guard_problem_size(1, 10)
+    with pytest.raises(ValueError, match="dimension must be 1, 2, or 3"):
+        guard_problem_size(4, 10)
+
+
+def test_resource_guard_validates_dimension_and_grid_shape():
+    assert estimate_two_group_resources(1, 100)['spatial_nodes'] == 100
+    with pytest.raises(ValueError, match=r"requires 2 grid count\(s\)"):
+        estimate_two_group_resources(2, 10)
+    with pytest.raises(ValueError, match="positive integers"):
+        estimate_two_group_resources(3, 10, 0, 10)
+
+
+def test_one_dimensional_guard_rejects_dangerous_dense_input():
+    with pytest.raises(ValueError, match="exceeding the safe limit"):
+        solve_two_group(N=20_001)
+
+
+def test_scan_interpolates_a_bracketed_critical_size():
+    result = scan_critical_size(L_min=40, L_max=400, n_points=8, N=40)
+
+    assert result['critical_bracketed'] is True
+    assert result['k_crit'] == 1.0
+
+
+def test_scan_and_boron_search_reject_invalid_ranges():
+    with pytest.raises(ValueError, match="L_min must be smaller"):
+        scan_critical_size(L_min=100, L_max=100, n_points=4, N=20)
+    with pytest.raises(ValueError, match="non-negative"):
+        search_critical_boron(C_range=(-1, 3000), N=20)
+
+
+def test_unknown_material_parameter_is_rejected_in_all_dimensions():
+    with pytest.raises(ValueError, match="Unknown material parameter"):
+        solve_two_group(sections={'not_a_cross_section': 1.0}, N=10)
 
 
 def test_json_export_omits_missing_optional_diagnostics():

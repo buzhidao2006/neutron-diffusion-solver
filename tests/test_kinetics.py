@@ -171,3 +171,22 @@ class TestRodEjection:
             rho = reactivity_rod_ejection(t, rho_max, t_eject=t_start, tau=tau)
             expected = rho_max * (1.0 - np.exp(-t / tau))
             assert rho == pytest.approx(expected, rel=1e-10)
+
+
+class TestPointKineticsValidation:
+    """Invalid transient inputs should fail before ODE integration."""
+
+    def test_rejects_non_increasing_time_span(self):
+        with pytest.raises(ValueError, match="increasing"):
+            solve_point_kinetics(lambda _t: 0.0, t_span=(1, 1))
+
+    def test_rejects_non_positive_prompt_lifetime(self):
+        with pytest.raises(ValueError, match="Lambda"):
+            solve_point_kinetics(lambda _t: 0.0, Lambda=0.0)
+
+    def test_rejects_malformed_delayed_neutron_data(self):
+        with pytest.raises(ValueError, match="beta_data"):
+            solve_point_kinetics(
+                lambda _t: 0.0,
+                beta_data={'beta_i': [0.001], 'lambda_i': [0.1, 0.2], 'beta': 0.001},
+            )

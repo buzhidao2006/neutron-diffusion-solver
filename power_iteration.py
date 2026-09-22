@@ -19,6 +19,7 @@ Chebyshev 加速作用于裂变源向量的 3-term 递推:
 """
 
 import numpy as np
+from numbers import Integral, Real
 from scipy.sparse.linalg import spsolve
 
 
@@ -28,9 +29,9 @@ class ConvergenceError(RuntimeError):
 
 def _validate_iteration_options(max_iter, tol):
     """Validate common iteration controls before a linear solve is attempted."""
-    if max_iter < 1:
+    if isinstance(max_iter, bool) or not isinstance(max_iter, Integral) or max_iter < 1:
         raise ValueError("max_iter must be at least 1.")
-    if tol <= 0:
+    if isinstance(tol, bool) or not isinstance(tol, Real) or not np.isfinite(tol) or tol <= 0:
         raise ValueError("tol must be positive.")
 
 
@@ -111,8 +112,8 @@ def power_iteration_chebyshev(A, F, phi0, max_iter=200, tol=1e-10, warmup=15,
     converged, delta_k
     """
     _validate_iteration_options(max_iter, tol)
-    if warmup < 0:
-        raise ValueError("warmup cannot be negative.")
+    if isinstance(warmup, bool) or not isinstance(warmup, Integral) or warmup < 0:
+        raise ValueError("warmup must be a non-negative integer.")
     k_history, residual = [], []
     rho_history, omega_history = [], []
     norm_sources = []

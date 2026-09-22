@@ -9,6 +9,7 @@
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from numbers import Integral, Real
 from solver import solve_two_group, DEFAULTS
 from bateman import (
     N_U_TOTAL, GRAMS_U_PER_CM3,
@@ -37,6 +38,25 @@ def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
     -------
     dict: 完整燃耗历史
     """
+    if isinstance(initial_enrichment, bool) or not isinstance(initial_enrichment, Real):
+        raise ValueError("initial_enrichment must be a number between 0 and 1.")
+    if not 0 < initial_enrichment < 1:
+        raise ValueError("initial_enrichment must be between 0 and 1.")
+    if isinstance(L, bool) or not isinstance(L, Real) or not np.isfinite(L) or L <= 0:
+        raise ValueError("L must be a finite positive number.")
+    if isinstance(N_grid, bool) or not isinstance(N_grid, Integral) or N_grid < 1:
+        raise ValueError("N_grid must be a positive integer.")
+    if isinstance(total_burnup, bool) or not isinstance(total_burnup, Real):
+        raise ValueError("total_burnup must be a finite non-negative number.")
+    if not np.isfinite(total_burnup) or total_burnup < 0:
+        raise ValueError("total_burnup must be a finite non-negative number.")
+    if isinstance(n_burnup_steps, bool) or not isinstance(n_burnup_steps, Integral):
+        raise ValueError("n_burnup_steps must be a positive integer.")
+    if n_burnup_steps < 1:
+        raise ValueError("n_burnup_steps must be a positive integer.")
+    if base_sections is not None and not isinstance(base_sections, dict):
+        raise ValueError("base_sections must be a mapping of material parameters.")
+
     # 基础截面（不含燃料的宏观截面部分）
     if base_sections is None:
         base_sections = {
@@ -112,7 +132,9 @@ def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
         }
 
         # === Step 2: 双群扩散求解 ===
-        result = solve_two_group(L=L, N=N_grid, sections=sections)
+        result = solve_two_group(
+            L=L, N=N_grid, sections=sections, raise_on_nonconvergence=True,
+        )
         k_eff = result['k_eff']
         phi1 = result['phi1']  # 快群通量分布
         phi2 = result['phi2']  # 热群通量分布

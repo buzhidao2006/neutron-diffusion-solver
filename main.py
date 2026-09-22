@@ -9,6 +9,7 @@ neutron-diffusion-solver — 统一命令行入口
   python3 main.py boron-search    # 临界硼浓度搜索
   python3 main.py 2d              # 二维双群扩散
   python3 main.py 3d              # 三维双群扩散
+  python3 main.py burnup          # 燃耗-扩散耦合
   python3 main.py kinetics        # 点堆动力学演示
   python3 main.py benchmark       # 一维单群解析基准与网格收敛
   python3 main.py test            # 运行测试套件
@@ -20,14 +21,57 @@ import sys
 import subprocess
 from pathlib import Path
 
+from power_iteration import ConvergenceError
+from result_export import (
+    burnup_history_to_csv_bytes,
+    burnup_history_to_json_bytes,
+    result_to_csv_bytes,
+    result_to_json_bytes,
+)
+
 PROJECT_DIR = Path(__file__).parent
+VERSION = "0.1.0"
+
+
+def _report_solver_error(error):
+    """Print a concise CLI error and return a non-zero process status."""
+    print(f"错误: {error}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def _write_export(data, output):
+    """Write exported bytes to a requested JSON or CSV path."""
+    path = Path(output)
+    suffix = path.suffix.lower()
+    if suffix not in {'.json', '.csv'}:
+        raise ValueError("output path must end with .json or .csv.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    print(f"结果已导出: {path}")
+
+
+def _export_diffusion_result(result, model, inputs, output):
+    if not output:
+        return
+    suffix = Path(output).suffix.lower()
+    if suffix == '.json':
+        data = result_to_json_bytes(result, model, inputs)
+    elif suffix == '.csv':
+        data = result_to_csv_bytes(result, model, inputs)
+    else:
+        raise ValueError("output path must end with .json or .csv.")
+    _write_export(data, output)
 
 
 def cmd_1d(args):
     """一维单群扩散求解。"""
-    from diffusion_1d import __doc__ as _  # noqa — 直接 import 就会执行
     print("运行 diffusion_1d.py ...")
-    exec(open(PROJECT_DIR / "diffusion_1d.py").read())
+    result = subprocess.run(
+        [sys.executable, str(PROJECT_DIR / "diffusion_1d.py")],
+        cwd=str(PROJECT_DIR),
+    )
+    if result.returncode != 0:
+        sys.exit(result.returncode)
 
 
 def cmd_2g(args):
@@ -37,18 +81,30 @@ def cmd_2g(args):
     print("=" * 50)
     print("  一维双群扩散求解")
     print("=" * 50)
-    result = solve_two_group(
-        L=args.L, N=args.N,
-        sections={'D1': args.D1, 'D2': args.D2, 'nu_Sf1': args.nu_Sf1,
-                  'nu_Sf2': args.nu_Sf2, 'Sa1': args.Sa1, 'Sa2': args.Sa2,
-                  'Ss12': args.Ss12},
-    )
+    sections = {
+        'D1': args.D1, 'D2': args.D2, 'nu_Sf1': args.nu_Sf1,
+        'nu_Sf2': args.nu_Sf2, 'Sa1': args.Sa1, 'Sa2': args.Sa2,
+        'Ss12': args.Ss12,
+    }
+    try:
+        result = solve_two_group(
+            L=args.L, N=args.N, max_iter=args.max_iter, tol=args.tol,
+            raise_on_nonconvergence=True, sections=sections,
+        )
+    except (ValueError, ConvergenceError) as error:
+        _report_solver_error(error)
     print(f"\n  k_eff = {result['k_eff']:.6f}")
     status = "超临界" if result['k_eff'] > 1.001 else (
         "次临界" if result['k_eff'] < 0.999 else "临界")
     print(f"  状态: {status}")
     print(f"  快群通量峰值: {result['phi1'].max():.4f}")
     print(f"  热群通量峰值: {result['phi2'].max():.4f}")
+    _export_diffusion_result(
+        result, 'two_group_diffusion_1d',
+        {'L_cm': args.L, 'N': args.N, 'tol': args.tol, 'max_iter': args.max_iter,
+         'sections': sections},
+        args.output,
+    )
 
 
 def cmd_critical_scan(args):
@@ -95,14 +151,24 @@ def cmd_2d(args):
     Ny_val = args.Ny or args.N
     print(f"  网格: {Nx_val}×{Ny_val} ({2*Nx_val*Ny_val} 未知数)")
 
-    result = solve_two_group_2d(
-        Lx=args.Lx, Ly=args.Ly or args.Lx,
-        Nx=Nx_val, Ny=Ny_val, method='chebyshev',
-    )
+    try:
+        result = solve_two_group_2d(
+            Lx=args.Lx, Ly=args.Ly or args.Lx,
+            Nx=Nx_val, Ny=Ny_val, method=args.method,
+            max_iter=args.max_iter, tol=args.tol, raise_on_nonconvergence=True,
+        )
+    except (ValueError, ConvergenceError) as error:
+        _report_solver_error(error)
     print(f"\n  k_eff     = {result['k_eff']:.6f}")
     print(f"  迭代次数  = {result['n_iter']}")
     print(f"  快群峰值  = {result['phi1'].max():.4f}")
     print(f"  热群峰值  = {result['phi2'].max():.4f}")
+    _export_diffusion_result(
+        result, 'two_group_diffusion_2d',
+        {'Lx_cm': args.Lx, 'Ly_cm': args.Ly or args.Lx, 'Nx': Nx_val, 'Ny': Ny_val,
+         'method': args.method, 'tol': args.tol, 'max_iter': args.max_iter},
+        args.output,
+    )
 
 
 def cmd_3d(args):
@@ -115,12 +181,54 @@ def cmd_3d(args):
     N_val = args.N
     print(f"  网格: {N_val}³ ({2*N_val**3} 未知数)")
 
-    result = solve_two_group_3d(
-        Lx=args.L, Ly=args.L, Lz=args.L,
-        Nx=N_val, Ny=N_val, Nz=N_val, method='chebyshev',
-    )
+    try:
+        result = solve_two_group_3d(
+            Lx=args.L, Ly=args.L, Lz=args.L,
+            Nx=N_val, Ny=N_val, Nz=N_val, method=args.method,
+            max_iter=args.max_iter, tol=args.tol, raise_on_nonconvergence=True,
+        )
+    except (ValueError, ConvergenceError) as error:
+        _report_solver_error(error)
     print(f"\n  k_eff     = {result['k_eff']:.6f}")
     print(f"  迭代次数  = {result['n_iter']}")
+    _export_diffusion_result(
+        result, 'two_group_diffusion_3d',
+        {'Lx_cm': args.L, 'Ly_cm': args.L, 'Lz_cm': args.L, 'N': N_val,
+         'method': args.method, 'tol': args.tol, 'max_iter': args.max_iter},
+        args.output,
+    )
+
+
+def cmd_burnup(args):
+    """燃耗-扩散耦合计算。"""
+    from burnup_solver import run_burnup_coupled
+
+    try:
+        history = run_burnup_coupled(
+            initial_enrichment=args.enrichment,
+            L=args.L,
+            N_grid=args.N,
+            total_burnup=args.total_burnup,
+            n_burnup_steps=args.steps,
+        )
+    except (ValueError, ConvergenceError) as error:
+        _report_solver_error(error)
+
+    print(f"  初始 k_eff = {history['k_eff'][0]:.6f}")
+    print(f"  最终 k_eff = {history['k_eff'][-1]:.6f}")
+    print(f"  最终燃耗  = {history['burnup'][-1]:.3f} MWd/kgU")
+    if args.output:
+        inputs = {
+            'initial_enrichment': args.enrichment, 'L_cm': args.L, 'N_grid': args.N,
+            'total_burnup_MWd_per_kgU': args.total_burnup, 'n_burnup_steps': args.steps,
+        }
+        suffix = Path(args.output).suffix.lower()
+        data = (burnup_history_to_json_bytes(history, inputs)
+                if suffix == '.json' else burnup_history_to_csv_bytes(history, inputs)
+                if suffix == '.csv' else None)
+        if data is None:
+            raise ValueError("output path must end with .json or .csv.")
+        _write_export(data, args.output)
 
 
 def cmd_kinetics(args):
@@ -192,6 +300,7 @@ def main():
   python3 main.py test
         """,
     )
+    parser.add_argument("--version", action="version", version=f"neutron-diffusion-solver {VERSION}")
 
     subparsers = parser.add_subparsers(dest="command", help="子命令")
 
@@ -210,6 +319,9 @@ def main():
     p.add_argument("--Sa1", type=float, default=0.008)
     p.add_argument("--Sa2", type=float, default=0.08)
     p.add_argument("--Ss12", type=float, default=0.020)
+    p.add_argument("--tol", type=float, default=1e-10, help="k_eff 收敛容差")
+    p.add_argument("--max-iter", type=int, default=300, help="最大迭代次数")
+    p.add_argument("--output", help="导出结果路径（.json 或 .csv）")
     p.set_defaults(func=cmd_2g)
 
     # critical-scan
@@ -234,13 +346,31 @@ def main():
     p.add_argument("--Nx", type=int, default=None)
     p.add_argument("--Ny", type=int, default=None)
     p.add_argument("--N", type=int, default=60, help="默认网格 (Nx=Ny=N)")
+    p.add_argument("--method", choices=("power", "chebyshev"), default="chebyshev")
+    p.add_argument("--tol", type=float, default=1e-10, help="k_eff 收敛容差")
+    p.add_argument("--max-iter", type=int, default=200, help="最大迭代次数")
+    p.add_argument("--output", help="导出结果路径（.json 或 .csv）")
     p.set_defaults(func=cmd_2d)
 
     # 3d
     p = subparsers.add_parser("3d", help="三维双群扩散")
     p.add_argument("--L", type=float, default=160.0, help="立方体边长 cm")
     p.add_argument("--N", type=int, default=20, help="每方向网格点数")
+    p.add_argument("--method", choices=("power", "chebyshev"), default="chebyshev")
+    p.add_argument("--tol", type=float, default=1e-10, help="k_eff 收敛容差")
+    p.add_argument("--max-iter", type=int, default=200, help="最大迭代次数")
+    p.add_argument("--output", help="导出结果路径（.json 或 .csv）")
     p.set_defaults(func=cmd_3d)
+
+    # burnup
+    p = subparsers.add_parser("burnup", help="燃耗-扩散耦合")
+    p.add_argument("--enrichment", type=float, default=0.04, help="U235 初始富集度（小数）")
+    p.add_argument("--L", type=float, default=200.0, help="平板长度 cm")
+    p.add_argument("--N", type=int, default=150, help="网格点数")
+    p.add_argument("--total-burnup", type=float, default=60.0, help="总燃耗 MWd/kgU")
+    p.add_argument("--steps", type=int, default=50, help="燃耗步数")
+    p.add_argument("--output", help="导出历史路径（.json 或 .csv）")
+    p.set_defaults(func=cmd_burnup)
 
     # kinetics
     p = subparsers.add_parser("kinetics", help="点堆动力学演示")
@@ -266,7 +396,10 @@ def main():
         parser.print_help()
         return
 
-    args.func(args)
+    try:
+        args.func(args)
+    except (ValueError, ConvergenceError) as error:
+        _report_solver_error(error)
 
 
 if __name__ == "__main__":

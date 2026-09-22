@@ -12,7 +12,7 @@ import numpy as np
 from scipy.sparse import diags, kron, eye, bmat, csr_matrix
 
 # 复用 solver.py 的默认截面数据
-from solver import DEFAULTS, validate_iteration_controls, validate_two_group_inputs
+from solver import merge_sections, validate_iteration_controls, validate_two_group_inputs
 from power_iteration import power_iteration, power_iteration_chebyshev
 from resource_guards import guard_problem_size
 
@@ -48,7 +48,8 @@ def _build_2d_laplacian(Nx, Ny, hx, hy):
 
 
 def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
-                        method='chebyshev', tol=1e-10, max_iter=200):
+                        method='chebyshev', tol=1e-10, max_iter=200,
+                        raise_on_nonconvergence=False):
     """
     求解二维双群中子扩散方程，返回 k_eff 和 2D 通量分布。
 
@@ -67,6 +68,8 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
         k_eff 收敛容忍度
     max_iter : int
         最大迭代次数
+    raise_on_nonconvergence : bool
+        为真时未收敛将抛出 ConvergenceError，适用于依赖该结果的工作流。
 
     Returns
     -------
@@ -84,7 +87,7 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
         'residual': list,        # 残差历史
     }
     """
-    p = {**DEFAULTS, **(sections or {})}
+    p = merge_sections(sections)
     Lx = p.get('Lx', p['L']) if Lx is None else Lx
     Ly = p.get('Ly', p['L']) if Ly is None else Ly
     Nx = p.get('Nx', p['N']) if Nx is None else Nx
@@ -127,9 +130,15 @@ def solve_two_group_2d(Lx=None, Ly=None, Nx=None, Ny=None, sections=None,
     phi0 = np.ones(2 * N_total)
 
     if method == 'power':
-        result = power_iteration(A, F, phi0, max_iter=max_iter, tol=tol)
+        result = power_iteration(
+            A, F, phi0, max_iter=max_iter, tol=tol,
+            raise_on_nonconvergence=raise_on_nonconvergence,
+        )
     elif method == 'chebyshev':
-        result = power_iteration_chebyshev(A, F, phi0, max_iter=max_iter, tol=tol, warmup=15)
+        result = power_iteration_chebyshev(
+            A, F, phi0, max_iter=max_iter, tol=tol, warmup=15,
+            raise_on_nonconvergence=raise_on_nonconvergence,
+        )
     phi = result['phi']
     k_eff = result['k_eff']
 
@@ -187,7 +196,10 @@ def scan_critical_size_2d(L_min=40.0, L_max=400.0, n_points=20, Nx=60, Ny=60,
     k_vals = []
 
     for L in L_vals:
-        result = solve_two_group_2d(Lx=L, Ly=L, Nx=Nx, Ny=Ny, sections=sections)
+        result = solve_two_group_2d(
+            Lx=L, Ly=L, Nx=Nx, Ny=Ny, sections=sections,
+            raise_on_nonconvergence=True,
+        )
         k_vals.append(result['k_eff'])
 
     k_vals = np.array(k_vals)
@@ -198,7 +210,7 @@ def scan_critical_size_2d(L_min=40.0, L_max=400.0, n_points=20, Nx=60, Ny=60,
     k_crit = k_vals[idx]
 
     # 解析 buckling 近似 (2D 方形: B² = 2*(π/L)²)
-    p = {**DEFAULTS, **(sections or {})}
+    p = merge_sections(sections)
     Sr1 = p['Sa1'] + p['Ss12']
     k_inf = p['nu_Sf1'] / Sr1 + (p['nu_Sf2'] / p['Sa2']) * (p['Ss12'] / Sr1)
     L2 = p['D2'] / p['Sa2']

@@ -17,7 +17,7 @@ Kronecker 积构造法:
 
 import numpy as np
 from scipy.sparse import diags, kron, eye, bmat, csr_matrix
-from solver import DEFAULTS, validate_iteration_controls, validate_two_group_inputs
+from solver import merge_sections, validate_iteration_controls, validate_two_group_inputs
 from power_iteration import power_iteration, power_iteration_chebyshev
 from resource_guards import guard_problem_size
 
@@ -57,7 +57,8 @@ def _build_3d_laplacian(Nx, Ny, Nz, hx, hy, hz):
 
 
 def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
-                        sections=None, method='chebyshev', tol=1e-10, max_iter=200):
+                        sections=None, method='chebyshev', tol=1e-10, max_iter=200,
+                        raise_on_nonconvergence=False):
     """
     求解三维双群中子扩散方程，返回 k_eff 和 3D 通量分布。
 
@@ -74,6 +75,8 @@ def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
         'chebyshev' — Chebyshev 外推加速（默认）
     tol : float, k_eff 收敛容忍度
     max_iter : int, 最大迭代次数
+    raise_on_nonconvergence : bool
+        为真时未收敛将抛出 ConvergenceError，适用于依赖该结果的工作流。
 
     Returns
     -------
@@ -89,7 +92,7 @@ def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
         'k_history': list,
     }
     """
-    p = {**DEFAULTS, **(sections or {})}
+    p = merge_sections(sections)
     Lx = p.get('Lx', p['L']) if Lx is None else Lx
     Ly = p.get('Ly', p['L']) if Ly is None else Ly
     Lz = p.get('Lz', p['L']) if Lz is None else Lz
@@ -135,10 +138,15 @@ def solve_two_group_3d(Lx=None, Ly=None, Lz=None, Nx=None, Ny=None, Nz=None,
     phi0 = np.ones(2 * N_total)
 
     if method == 'power':
-        result = power_iteration(A, F, phi0, max_iter=max_iter, tol=tol)
+        result = power_iteration(
+            A, F, phi0, max_iter=max_iter, tol=tol,
+            raise_on_nonconvergence=raise_on_nonconvergence,
+        )
     elif method == 'chebyshev':
-        result = power_iteration_chebyshev(A, F, phi0, max_iter=max_iter,
-                                           tol=tol, warmup=15)
+        result = power_iteration_chebyshev(
+            A, F, phi0, max_iter=max_iter, tol=tol, warmup=15,
+            raise_on_nonconvergence=raise_on_nonconvergence,
+        )
     phi = result['phi']
     k_eff = result['k_eff']
 

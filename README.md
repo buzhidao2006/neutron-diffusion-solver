@@ -31,7 +31,7 @@ Day 5  ● 二维双群 + Kronecker 积稀疏矩阵 + 解析验证
 Day 6  ● 阶段性学习总结
 Day 7  ● 幂迭代 + Chebyshev 外推加速
 Wk 4   ● 点堆动力学求解器（6 群缓发中子）
-       ● 47 个 pytest 单元测试
+       ● 96 个 pytest 单元测试
        ● Jupyter 教学版 notebook
        ● 三维双群扩散（Kronecker 积扩展到 3D）
        ● 统一 CLI 入口 main.py
@@ -61,7 +61,7 @@ Wk 4   ● 点堆动力学求解器（6 群缓发中子）
 
 ```
 neutron-diffusion-solver/
-├── main.py                  # 统一 CLI 入口（9 个子命令）
+├── main.py                  # 统一 CLI 入口（11 个子命令）
 ├── app.py                   # Streamlit Web 应用（交互式可视化）
 │
 ├── solver.py                # 一维求解器核心模块（临界扫描 + 硼搜索）
@@ -77,6 +77,7 @@ neutron-diffusion-solver/
 ├── boron_search.py          # 临界硼浓度搜索（外迭代+内迭代嵌套）
 │
 ├── power_iteration.py       # 幂迭代 + Chebyshev 外推加速引擎
+├── convergence.py           # 跨 CLI/Web 的收敛诊断策略
 ├── visualization.py          # 收敛历史与残差诊断图
 ├── result_export.py          # CSV 通量表与可复现 JSON 导出
 ├── resource_guards.py        # 2D/3D 规模估算与安全上限
@@ -92,13 +93,23 @@ neutron-diffusion-solver/
 ├── validate_2d.py           # 二维解析验证（特征值 + buckling + 网格收敛）
 ├── neutron_diffusion_tutorial.ipynb  # Jupyter 教学版（扩散→点堆全链路）
 │
-├── tests/                   # 78 个 pytest 单元测试
+├── tests/                   # 96 个 pytest 单元测试
 │   ├── test_diffusion.py    # 扩散/临界/幂迭代/2D/3D 验证
-│   └── test_kinetics.py     # 点堆动力学验证
+│   ├── test_kinetics.py     # 点堆动力学验证
+│   ├── test_benchmarks.py   # 解析基准与网格收敛
+│   ├── test_result_export.py # CSV/JSON 结果导出
+│   ├── test_visualization.py # 收敛图与诊断
+│   ├── test_edge_cases.py   # 边界条件与资源保护
+│   ├── test_main.py         # CLI 入口与导出回归
+│   ├── test_cli_e2e.py      # CLI 端到端测试
+│   ├── test_plotting.py     # Matplotlib 字体配置
+│   └── test_convergence.py  # 网页收敛提示与严格保护
 ├── docs/USAGE.md            # 安装、计算、导出与诊断使用指南
+├── docs/QUICKSTART.md       # 从安装到解释结果的完整案例
 ├── .github/workflows/test.yml  # GitHub Actions（lint + 测试）
 ├── requirements.txt         # 运行依赖
 ├── requirements-dev.txt     # 开发、测试与 lint 依赖
+├── requirements-lock-py312.txt # Python 3.12 可复现环境锁定版本
 ├── pyproject.toml           # Ruff 与 pytest 配置
 └── NOTES.md                 # 完整物理推导笔记
 ```
@@ -142,11 +153,13 @@ pip install -r requirements-dev.txt
 
 ```bash
 python3 main.py 1d              # 一维单群扩散
+python3 main.py --version       # 查看项目版本
 python3 main.py 2g              # 一维双群扩散
 python3 main.py critical-scan   # 临界尺寸扫描
 python3 main.py boron-search    # 临界硼浓度搜索
 python3 main.py 2d              # 二维双群扩散
 python3 main.py 3d              # 三维双群扩散
+python3 main.py burnup          # 燃耗-扩散耦合
 python3 main.py kinetics        # 点堆动力学演示
 python3 main.py benchmark       # 一维单群解析基准 + 网格收敛
 python3 main.py test            # 运行测试套件
@@ -157,6 +170,8 @@ python3 main.py demo            # 运行所有演示
 
 ```bash
 python3 main.py 2g --L 300 --N 200
+python3 main.py 2g --N 150 --output results.json
+python3 main.py 2d --Lx 200 --Nx 40 --Ny 40 --output results.csv
 python3 main.py critical-scan --L-min 40 --L-max 400
 python3 main.py 2d --Lx 200 --Nx 60
 python3 main.py 3d --L 160 --N 20
@@ -252,12 +267,17 @@ python3 main.py benchmark
 
 ## 测试与持续集成
 
-- **78 个单元测试**，覆盖扩散、点堆动力学与解析基准：
+- **96 个单元测试**，覆盖扩散、点堆动力学、解析基准、导出和 CLI：
   - `test_diffusion.py`（41 个）— 扩散求解器、输入参数校验、资源保护、临界搜索、幂迭代、收敛失败诊断、2D/3D Laplacian 解析验证、跨模块物理一致性
-  - `test_kinetics.py`（18 个）— 点堆方程、倒时方程、瞬发跳变、弹棒事故
+  - `test_kinetics.py`（21 个）— 点堆方程、倒时方程、瞬发跳变、弹棒事故与输入校验
   - `test_benchmarks.py`（3 个）— 一维平板解析基准与网格收敛
   - `test_visualization.py`（4 个）— 收敛诊断图与收缩率计算
-  - `test_edge_cases.py`（8 个）— 资源上限、3D 导出、JSON 序列化与诊断边界条件
+  - `test_result_export.py`（5 个）— CSV/JSON 结果与燃耗历史导出
+  - `test_edge_cases.py`（13 个）— 资源上限、非法参数、3D 导出、JSON 序列化与诊断边界条件
+  - `test_main.py`（3 个）— 统一 CLI 入口与导出回归
+  - `test_cli_e2e.py`（2 个）— CLI 导出与错误退出码
+  - `test_plotting.py`（1 个）— Matplotlib 字体配置
+  - `test_convergence.py`（3 个）— 网页收敛提示与严格下游保护
 - **GitHub Actions**：push / PR 到 `master`/`main` 时，自动运行 Ruff 静态检查，并在 Python 3.10 和 3.12 下运行 `pytest tests/ -v`
 
 ---
@@ -273,3 +293,5 @@ python3 main.py benchmark
 ## License
 
 MIT — 教学用途，欢迎 fork 和改进。
+
+更多贡献规范见 [CONTRIBUTING.md](CONTRIBUTING.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
