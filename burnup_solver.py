@@ -5,7 +5,7 @@
 循环:
     1. 给定核素浓度 → 计算宏观截面 → 双群扩散求 φ, k_eff
     2. 用 φ 驱动 Bateman 步进 → 更新核素浓度
-    3. 重复直到 k_eff < 1 (次临界, 无法维持链式反应)
+    3. 重复至目标燃耗，或在超过 10 MWd/kgU 后进入深度次临界 (k_eff < 0.95)
 """
 import numpy as np
 import matplotlib.pyplot as plt
@@ -113,7 +113,8 @@ def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
     total_time = 0.0
     cumulative_burnup = 0.0
 
-    for step in range(n_burnup_steps + 1):
+    steps_to_run = 0 if total_burnup == 0 else n_burnup_steps
+    for step in range(steps_to_run + 1):
         # === Step 1: 从核素浓度计算宏观截面 ===
         # 核素的宏观截面贡献 (cm⁻¹)
         # 快群: U235 和 Pu239 都有快裂变贡献，但相对热群小
@@ -152,7 +153,8 @@ def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
 
         # === Step 2: 双群扩散求解 ===
         result = solve_two_group(
-            L=L, N=N_grid, sections=sections, raise_on_nonconvergence=True,
+            L=L, N=N_grid, sections=sections, max_iter=1000, tol=1e-8,
+            raise_on_nonconvergence=True,
         )
         k_eff = result['k_eff']
         phi1 = result['phi1']  # 快群通量分布
@@ -197,7 +199,7 @@ def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
         history['Sigma_a2'].append(Sa2_total)
         history['Sigma_f2'].append(Sigma_f2)
 
-        if step >= n_burnup_steps:
+        if step >= steps_to_run or (k_eff < 0.95 and cumulative_burnup > 10):
             break
 
         # === Step 5: Bateman 步进 ===
@@ -232,11 +234,6 @@ def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
         total_time += dt
         cumulative_burnup += burnup_step
 
-        # k_eff < 0.95 → 次临界，可以提前结束
-        if k_eff < 0.95 and cumulative_burnup > 10:
-            print(f"  [Step {step}] k_eff={k_eff:.4f} < 0.95, 深度次临界, 结束计算")
-            break
-
     # 转换为 numpy 数组
     for key in history:
         history[key] = np.array(history[key])
@@ -262,12 +259,14 @@ if __name__ == "__main__":
     k_eff = hist['k_eff']
     time_years = hist['time_days'] / 365
 
-    # 找 k=1 对应的燃耗
-    idx_k1 = np.argmin(np.abs(k_eff - 1.0))
-    bu_k1 = bu[idx_k1] if idx_k1 < len(bu) else bu[-1]
+    bu_k1 = find_critical_burnup(bu, k_eff)
 
     print(f"初始 k_eff: {k_eff[0]:.4f}")
-    print(f"k=1 燃耗: {bu_k1:.1f} MWd/kgU ({time_years[idx_k1]:.2f} 年)")
+    if bu_k1 is None:
+        print("k=1 燃耗: 扫描范围内未达到")
+    else:
+        print(f"k=1 燃耗: {bu_k1:.1f} MWd/kgU "
+              f"({np.interp(bu_k1, bu, time_years):.2f} 年)")
     print(f"最终 k_eff: {k_eff[-1]:.4f} @ {bu[-1]:.1f} MWd/kgU")
     print(f"辐照时间: {hist['time_days'][-1]:.0f} 天 ({time_years[-1]:.2f} 年)")
     print()
@@ -284,16 +283,18 @@ if __name__ == "__main__":
     ax = axes[0, 0]
     ax.plot(bu, k_eff, '#e74c3c', linewidth=2.5)
     ax.axhline(y=1.0, color='k', linestyle=':', linewidth=1.5, label='k=1 (critical)')
-    ax.axvline(x=bu_k1, color='gray', linestyle='--', linewidth=1)
+    if bu_k1 is not None:
+        ax.axvline(x=bu_k1, color='gray', linestyle='--', linewidth=1)
     ax.fill_between(bu, 0, k_eff, color='#e74c3c', alpha=0.06)
     ax.set_xlabel('Burnup (MWd/kgU)', fontsize=11)
     ax.set_ylabel('k_eff', fontsize=11)
     ax.set_title('k_eff vs Burnup — Reactivity Depletion', fontsize=12, fontweight='bold')
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.25)
-    ax.annotate(f'k=1 @ {bu_k1:.1f} MWd/kgU',
-                xy=(bu_k1, 1.0), xytext=(bu_k1 + 5, 1.08),
-                arrowprops=dict(arrowstyle='->', color='gray'), fontsize=9)
+    if bu_k1 is not None:
+        ax.annotate(f'k=1 @ {bu_k1:.1f} MWd/kgU',
+                    xy=(bu_k1, 1.0), xytext=(bu_k1 + 5, 1.08),
+                    arrowprops=dict(arrowstyle='->', color='gray'), fontsize=9)
 
     # 图 2: 核素浓度
     ax = axes[0, 1]

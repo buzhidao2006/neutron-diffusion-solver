@@ -13,7 +13,10 @@ from result_export import (
     build_result_record,
     result_to_csv_bytes,
     result_to_json_bytes,
+    point_kinetics_to_csv_bytes,
+    point_kinetics_to_json_bytes,
 )
+from point_kinetics import PointKineticsResult
 
 
 def _sample_result():
@@ -107,3 +110,27 @@ def test_burnup_exports_preserve_inputs_and_each_history_step():
     assert exported_json['history']['burnup'] == [0.0, 5.0]
     assert rows[0][:3] == ['burnup_MWd_per_kgU', 'time_days', 'k_eff']
     assert rows[2][2] == '0.99'
+
+
+def test_kinetics_exports_preserve_every_time_point_and_nonfinite_period():
+    result = PointKineticsResult(
+        t=np.array([0.0, 1.0, 2.0]),
+        P=np.array([1.0, 1.0, 1.0]),
+        C=np.ones((6, 3)),
+        rho=np.zeros(3),
+        n_groups=6,
+        info='completed',
+    )
+    inputs = {'scenario': 'steady', 'simulation_end_s': 2.0}
+    timestamp = '2026-01-01T00:00:00+00:00'
+
+    record = json.loads(point_kinetics_to_json_bytes(result, inputs, timestamp))
+    csv_lines = point_kinetics_to_csv_bytes(result, inputs, timestamp).decode('utf-8').splitlines()
+    rows = list(csv.reader(StringIO('\n'.join(csv_lines[5:]))))
+
+    assert record['inputs'] == inputs
+    assert record['summary']['n_time_points'] == 3
+    assert record['history']['reactor_period_s'] == [None, None, None]
+    assert len(rows) == 4  # column names and three history rows
+    assert rows[0][0:2] == ['time_s', 'normalized_power']
+    assert rows[-1][0:2] == ['2.0', '1.0']

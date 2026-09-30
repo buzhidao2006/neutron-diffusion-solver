@@ -71,11 +71,13 @@ def show_burnup_downloads(history, inputs):
         st.download_button(
             "下载燃耗历史 CSV", burnup_history_to_csv_bytes(history, inputs),
             "burnup_history.csv", "text/csv", key="burnup_history_csv",
+            on_click="ignore",
         )
     with json_col:
         st.download_button(
             "下载可复现记录 JSON", burnup_history_to_json_bytes(history, inputs),
             "burnup_history.json", "application/json", key="burnup_history_json",
+            on_click="ignore",
         )
 
 
