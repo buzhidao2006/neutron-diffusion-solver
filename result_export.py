@@ -121,3 +121,64 @@ def burnup_history_to_csv_bytes(history, inputs, generated_at=None):
     for row in zip(*(np.asarray(history[key]).ravel() for key, _ in columns)):
         writer.writerow(row)
     return stream.getvalue().encode('utf-8')
+
+
+def _finite_series(values):
+    """Convert a numeric series to JSON-safe values, representing infinities as null."""
+    return [float(value) if np.isfinite(value) else None for value in np.asarray(values).ravel()]
+
+
+def point_kinetics_record(result, inputs, generated_at=None):
+    """Build a reproducible point-kinetics record and complete time history."""
+    timestamp = generated_at or datetime.now(timezone.utc).isoformat()
+    precursor = np.asarray(result.C)
+    history = {
+        'time_s': _finite_series(result.t),
+        'normalized_power': _finite_series(result.P),
+        'reactivity': _finite_series(result.rho),
+        'reactor_period_s': _finite_series(result.period),
+    }
+    for group_index, values in enumerate(precursor, start=1):
+        history[f'precursor_group_{group_index}'] = _finite_series(values)
+    peak_index = int(np.argmax(result.P))
+    return {
+        'schema_version': 1,
+        'generated_at': timestamp,
+        'model': 'point_kinetics',
+        'inputs': _to_builtin(inputs),
+        'solver_info': result.info,
+        'summary': {
+            'n_groups': int(result.n_groups),
+            'n_time_points': int(len(result.t)),
+            'final_time_s': float(result.t[-1]),
+            'final_power': float(result.P[-1]),
+            'peak_power': float(result.P[peak_index]),
+            'peak_time_s': float(result.t[peak_index]),
+            'final_reactivity': float(result.rho[-1]),
+        },
+        'history': history,
+    }
+
+
+def point_kinetics_to_json_bytes(result, inputs, generated_at=None):
+    """Export point-kinetics inputs, solver status, and histories as UTF-8 JSON."""
+    return json.dumps(
+        point_kinetics_record(result, inputs, generated_at),
+        ensure_ascii=False, indent=2, allow_nan=False,
+    ).encode('utf-8')
+
+
+def point_kinetics_to_csv_bytes(result, inputs, generated_at=None):
+    """Export point-kinetics time series with reproducibility metadata as CSV."""
+    record = point_kinetics_record(result, inputs, generated_at)
+    stream = StringIO(newline='')
+    stream.write(f"# neutron-diffusion-solver export; model={record['model']}\n")
+    stream.write(f"# generated_at={record['generated_at']}\n")
+    stream.write(f"# inputs={json.dumps(record['inputs'], ensure_ascii=False, sort_keys=True)}\n")
+    stream.write(f"# summary={json.dumps(record['summary'], ensure_ascii=False)}\n")
+    stream.write(f"# solver_info={record['solver_info']}\n")
+    writer = csv.writer(stream)
+    columns = list(record['history'])
+    writer.writerow(columns)
+    writer.writerows(zip(*(record['history'][key] for key in columns)))
+    return stream.getvalue().encode('utf-8')
