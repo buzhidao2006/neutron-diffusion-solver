@@ -22,7 +22,7 @@ DEFAULTS = {
     'nu_Sf2': 0.105,   # νΣ_f (cm⁻¹)
     'Sa2': 0.08,       # 吸收截面 Σ_a2 (cm⁻¹)
     # 几何
-    'L': 200.0,        # 平板半厚度 (cm)
+    'L': 200.0,        # 模拟平板全厚度 (cm)，边界 x=0 与 x=L
     'N': 150,          # 网格点数
 }
 
@@ -94,7 +94,7 @@ def solve_two_group(L=None, N=None, sections=None, max_iter=300, tol=1e-10,
 
     Parameters
     ----------
-    L : float, 平板半厚度 (cm)，默认 200
+    L : float, 模拟平板全厚度 (cm)，默认 200
     N : int, 网格点数，默认 150
     sections : dict, 截面数据，可部分覆盖默认值
     max_iter : int, 最大幂迭代次数

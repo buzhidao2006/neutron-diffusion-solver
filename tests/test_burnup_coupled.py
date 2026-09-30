@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from bateman import N_U_TOTAL
+from bateman import FISSIONS_PER_MWD, GRAMS_U_PER_CM3, N_U_TOTAL
 from burnup_solver import find_critical_burnup, run_burnup_coupled
 
 
@@ -37,6 +37,20 @@ def test_zero_burnup_returns_only_the_initial_state():
     assert len(history['burnup']) == 1
     assert history['burnup'][0] == history['time_days'][0] == 0
     assert history['N_U235'][0] == pytest.approx(0.04 * N_U_TOTAL)
+
+
+def test_one_year_limit_substeps_without_claiming_unearned_burnup():
+    history = _run(total_burnup=60, n_burnup_steps=1)
+    fissions_needed = 60 * (GRAMS_U_PER_CM3 / 1000) * FISSIONS_PER_MWD
+    initial_fission_rate = history['flux_thermal'][0] * history['Sigma_f2'][0]
+    expected_days = fissions_needed / initial_fission_rate / 86400
+
+    assert expected_days > 365
+    assert history['time_days'][-1] == pytest.approx(expected_days)
+    assert history['burnup'][-1] == pytest.approx(60)
+    assert history['N_U235'][-1] < history['N_U235'][0]
+    total = sum(history[key] for key in ('N_U235', 'N_U238', 'N_Pu239', 'N_FP'))
+    np.testing.assert_allclose(total, N_U_TOTAL, rtol=1e-12)
 
 
 def test_deep_subcritical_run_stops_after_recording_triggering_state():

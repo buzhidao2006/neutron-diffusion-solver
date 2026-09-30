@@ -177,7 +177,7 @@ st.sidebar.caption("GitHub: [neutron-diffusion-solver](https://github.com/buzhid
 
 # ===== 双群扩散求解 =====
 if tab == "双群扩散求解":
-    L = st.sidebar.slider("平板半厚度 L (cm)", 20.0, 500.0, 200.0, 10.0)
+    L = st.sidebar.slider("平板全厚度 L (cm)", 20.0, 500.0, 200.0, 10.0)
 
     if st.sidebar.button("🔬 求解", type="primary", use_container_width=True):
         try:
@@ -341,7 +341,7 @@ elif tab == "临界尺寸扫描":
 
 # ===== 临界硼搜索 =====
 elif tab == "临界硼搜索":
-    L = st.sidebar.slider("堆芯半厚度 L (cm)", 50.0, 500.0, 200.0, 10.0,
+    L = st.sidebar.slider("模拟堆芯全厚度 L (cm)", 50.0, 500.0, 200.0, 10.0,
                           key="boron_L")
     alpha = st.sidebar.number_input("硼灵敏度 α (cm⁻¹/ppm)", 1e-7, 1e-3,
                                      DEFAULTS.get('alpha', 1.0e-5), 1e-6, format="%.1e")
@@ -691,7 +691,7 @@ elif tab == "🔥 燃耗耦合":
     st.sidebar.markdown("### 🏭 燃耗参数")
 
     enrichment = st.sidebar.slider("初始 U235 富集度 (%)", 1.0, 10.0, 4.0, 0.5) / 100
-    L_burn = st.sidebar.slider("堆芯半厚度 L (cm)", 50.0, 500.0, 200.0, 10.0, key="burn_L")
+    L_burn = st.sidebar.slider("模拟堆芯全厚度 L (cm)", 50.0, 500.0, 200.0, 10.0, key="burn_L")
     total_bu = st.sidebar.slider("总燃耗 (MWd/kgU)", 10.0, 80.0, 50.0, 5.0)
     n_steps_burn = st.sidebar.slider("燃耗步数", 10, 100, 40, 5,
                                       help="步数越多越精细，计算越慢")

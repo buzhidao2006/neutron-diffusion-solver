@@ -35,7 +35,7 @@ Wk 4   ● 点堆动力学求解器（6 群缓发中子）
        ● 三维双群扩散（Kronecker 积扩展到 3D）
        ● 统一 CLI 入口 main.py
        ● GitHub Actions 持续集成
-后续   ● 扩充到 114 个自动化测试（含网页回归与 CLI 端到端测试）
+后续   ● 扩充到 116 个自动化测试（含网页回归与 CLI 端到端测试）
 ```
 
 | 日期 | 提交 | 内容 | 核心文件 |
@@ -93,7 +93,7 @@ neutron-diffusion-solver/
 ├── validate_2d.py           # 二维解析验证（特征值 + buckling + 网格收敛）
 ├── neutron_diffusion_tutorial.ipynb  # Jupyter 教学版（扩散→点堆全链路）
 │
-├── tests/                   # 114 个 pytest 自动化测试
+├── tests/                   # 116 个 pytest 自动化测试
 │   ├── test_diffusion.py    # 扩散/临界/幂迭代/2D/3D 验证
 │   ├── test_kinetics.py     # 点堆动力学验证
 │   ├── test_benchmarks.py   # 解析基准与网格收敛
@@ -270,13 +270,15 @@ python3 main.py benchmark
 
 ## 测试与持续集成
 
-- **114 个自动化测试**，覆盖扩散、点堆动力学、燃耗、解析基准、导出、网页和 CLI：
+- **116 个自动化测试**，覆盖扩散、点堆动力学、燃耗、解析基准、导出、网页和 CLI：
   - `test_diffusion.py`、`test_kinetics.py`、`test_benchmarks.py` — 求解器、物理一致性与解析基准
   - `test_burnup_coupled.py` — 核素总量守恒、步长敏感性、零燃耗和提前停止
   - `test_result_export.py`、`test_app_workflows.py` — CSV/JSON 时间点与元数据、Streamlit 结果页状态
   - `test_edge_cases.py`、`test_convergence.py`、`test_visualization.py` — 参数边界、资源保护和收敛诊断
   - `test_main.py`、`test_cli_e2e.py`、`test_plotting.py` — CLI 与字体配置
 - **GitHub Actions**：push / PR 到 `master`/`main` 时，自动运行 Ruff 静态检查，并在 Python 3.10 和 3.12 下运行 `pytest tests/ -v`
+
+研究级[均匀双群裸平板基准对比](docs/RESEARCH_BENCHMARK.md)记录了输入、结果、偏差与网格收敛；[工程级验证准备度评估](docs/ENGINEERING_READINESS.md)列出针对真实堆芯 `k_eff` 设计审查用途的缺口。二者均不构成工程级物理验证。
 
 ---
 
