@@ -18,6 +18,25 @@ from bateman import (
 )
 
 
+def find_critical_burnup(burnup, k_eff):
+    """Interpolate the first sampled crossing of k_eff=1, or return None."""
+    burnup = np.asarray(burnup, dtype=float)
+    k_eff = np.asarray(k_eff, dtype=float)
+    if burnup.ndim != 1 or k_eff.ndim != 1 or len(burnup) != len(k_eff):
+        raise ValueError("burnup and k_eff must be one-dimensional arrays of equal length.")
+    if not np.all(np.isfinite(burnup)) or not np.all(np.isfinite(k_eff)):
+        raise ValueError("burnup and k_eff must contain finite values.")
+    for index, k_left in enumerate(k_eff):
+        if k_left == 1.0:
+            return float(burnup[index])
+        if index + 1 < len(k_eff):
+            k_right = k_eff[index + 1]
+            if (k_left - 1.0) * (k_right - 1.0) < 0:
+                fraction = (1.0 - k_left) / (k_right - k_left)
+                return float(burnup[index] + fraction * (burnup[index + 1] - burnup[index]))
+    return None
+
+
 def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
                         L=200.0,                    # 堆芯半厚度 (cm)
                         N_grid=150,                 # 扩散网格点数

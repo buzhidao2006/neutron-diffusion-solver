@@ -12,7 +12,10 @@ import numpy as np
 from scipy.sparse import diags, kron, eye, bmat, csr_matrix
 
 # 复用 solver.py 的默认截面数据
-from solver import merge_sections, validate_iteration_controls, validate_two_group_inputs
+from solver import (
+    _validate_grid_count, _validate_positive_number, merge_sections,
+    validate_iteration_controls, validate_two_group_inputs,
+)
 from power_iteration import power_iteration, power_iteration_chebyshev
 from resource_guards import guard_problem_size
 
@@ -192,6 +195,15 @@ def scan_critical_size_2d(L_min=40.0, L_max=400.0, n_points=20, Nx=60, Ny=60,
         }
     }
     """
+    _validate_positive_number('L_min', L_min)
+    _validate_positive_number('L_max', L_max)
+    if L_min >= L_max:
+        raise ValueError('L_min must be smaller than L_max.')
+    _validate_grid_count('n_points', n_points)
+    if n_points < 2:
+        raise ValueError('n_points must be at least 2.')
+    _validate_grid_count('Nx', Nx)
+    _validate_grid_count('Ny', Ny)
     L_vals = np.linspace(L_min, L_max, n_points)
     k_vals = []
 
@@ -204,10 +216,20 @@ def scan_critical_size_2d(L_min=40.0, L_max=400.0, n_points=20, Nx=60, Ny=60,
 
     k_vals = np.array(k_vals)
 
-    # 找临界尺寸（插值附近）
+    # 仅在扫描点夹住 k=1 时插值；否则最近点并不代表真正的临界尺寸。
     idx = np.argmin(np.abs(k_vals - 1.0))
     L_crit = L_vals[idx]
     k_crit = k_vals[idx]
+    critical_bracketed = False
+    for left in range(len(k_vals) - 1):
+        if (k_vals[left] - 1.0) * (k_vals[left + 1] - 1.0) <= 0:
+            right = left + 1
+            if k_vals[right] != k_vals[left]:
+                fraction = (1.0 - k_vals[left]) / (k_vals[right] - k_vals[left])
+                L_crit = L_vals[left] + fraction * (L_vals[right] - L_vals[left])
+                k_crit = 1.0
+                critical_bracketed = True
+            break
 
     # 解析 buckling 近似 (2D 方形: B² = 2*(π/L)²)
     p = merge_sections(sections)
@@ -224,6 +246,7 @@ def scan_critical_size_2d(L_min=40.0, L_max=400.0, n_points=20, Nx=60, Ny=60,
         'k_vals': k_vals,
         'L_crit': L_crit,
         'k_crit': k_crit,
+        'critical_bracketed': critical_bracketed,
         'analytic': {
             'k_inf': k_inf,
             'M2': M2,
