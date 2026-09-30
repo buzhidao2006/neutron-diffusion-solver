@@ -13,7 +13,7 @@
 
 ## 项目概览
 
-这是一个从零开始构建的反应堆物理数值计算教学项目。一个月时间（2026.06.15 → 07.14），16 次提交，从 44 行的一维单群求解器，演进为覆盖**临界计算、燃耗分析、点堆动力学、三维双群扩散**的 4300+ 行代码，配套解析基准、单元测试与 GitHub Actions 持续集成。
+这是一个从零开始构建的反应堆物理数值计算教学项目。最初一个月（2026.06.15 → 07.14）的 16 次提交，将 44 行的一维单群求解器扩展到**临界计算、燃耗分析、点堆动力学、三维双群扩散**；此后继续补充诊断、导出、测试和持续集成。
 
 **核心能力**：有限差分法 · 幂迭代 · Chebyshev 外推加速 · 双群/三维扩散 · 点堆动力学 · 临界搜索 · Bateman 燃耗 · Kronecker 积稀疏矩阵 · 解析验证
 
@@ -31,11 +31,11 @@ Day 5  ● 二维双群 + Kronecker 积稀疏矩阵 + 解析验证
 Day 6  ● 阶段性学习总结
 Day 7  ● 幂迭代 + Chebyshev 外推加速
 Wk 4   ● 点堆动力学求解器（6 群缓发中子）
-       ● 100 个 pytest 单元测试
        ● Jupyter 教学版 notebook
        ● 三维双群扩散（Kronecker 积扩展到 3D）
        ● 统一 CLI 入口 main.py
        ● GitHub Actions 持续集成
+后续   ● 扩充到 114 个自动化测试（含网页回归与 CLI 端到端测试）
 ```
 
 | 日期 | 提交 | 内容 | 核心文件 |
@@ -52,7 +52,7 @@ Wk 4   ● 点堆动力学求解器（6 群缓发中子）
 | 07-14 | `4c4c6d7` | ✅ 42 个 pytest 单元测试（扩散 + 点堆） | `tests/` |
 | 07-14 | `ecffc31` | 📓 Jupyter 教学版 —— 从中子扩散到点堆动力学全链路 | `neutron_diffusion_tutorial.ipynb` |
 | 07-14 | `40f5826` | 🧊 三维双群扩散 —— Kronecker 积扩展到 3D | `diffusion_3d.py`, `solver_3d.py` |
-| 07-14 | `e8f231c` | 🎛️ 统一 CLI 入口（9 个子命令） | `main.py` |
+| 07-14 | `e8f231c` | 🎛️ 统一 CLI 入口（当时 9 个子命令） | `main.py` |
 | 07-14 | `3333604` | 🤖 GitHub Actions —— push/PR 自动跑 pytest | `.github/workflows/test.yml` |
 
 ---
@@ -93,7 +93,7 @@ neutron-diffusion-solver/
 ├── validate_2d.py           # 二维解析验证（特征值 + buckling + 网格收敛）
 ├── neutron_diffusion_tutorial.ipynb  # Jupyter 教学版（扩散→点堆全链路）
 │
-├── tests/                   # 100 个 pytest 单元测试
+├── tests/                   # 114 个 pytest 自动化测试
 │   ├── test_diffusion.py    # 扩散/临界/幂迭代/2D/3D 验证
 │   ├── test_kinetics.py     # 点堆动力学验证
 │   ├── test_benchmarks.py   # 解析基准与网格收敛
@@ -102,6 +102,8 @@ neutron-diffusion-solver/
 │   ├── test_edge_cases.py   # 边界条件与资源保护
 │   ├── test_main.py         # CLI 入口与导出回归
 │   ├── test_cli_e2e.py      # CLI 端到端测试
+│   ├── test_burnup_coupled.py # 燃耗耦合守恒性、步长与停止条件
+│   ├── test_app_workflows.py # Streamlit 结果页与导出回归
 │   ├── test_plotting.py     # Matplotlib 字体配置
 │   └── test_convergence.py  # 网页收敛提示与严格保护
 ├── docs/USAGE.md            # 安装、计算、导出与诊断使用指南
@@ -202,8 +204,8 @@ streamlit run app.py
 3. **临界硼搜索** — 临界硼浓度与反应性价值
 4. **二维扩散 (2D)** — 通量云图、中心线剖面、资源估算与结果导出
 5. **三维扩散 (3D)** — 正交截面、资源保护、收敛诊断与结果导出
-6. **燃耗耦合** — Bateman 衰变链与燃耗-扩散耦合
-7. **点堆动力学** — 6 群缓发中子瞬态与反应性场景
+6. **燃耗耦合** — Bateman 衰变链、燃耗-扩散耦合、临界状态与 CSV/JSON 历史导出
+7. **点堆动力学** — 6 群缓发中子瞬态、反应性场景、停止状态与 CSV/JSON 历史导出
 
 完整的安装、CLI、Web 操作、结果导出和收敛判读说明见 [使用指南](docs/USAGE.md)。
 
@@ -256,6 +258,7 @@ python3 main.py benchmark
 - ✅ 求解入口参数校验：几何尺寸、网格、迭代控制与两群截面
 - ✅ 2D/3D 规模估算与资源保护，阻止过大网格在矩阵分配前耗尽资源
 - ✅ 1D/2D/3D 结果导出：CSV 通量表与包含参数、诊断和时间戳的可复现 JSON 记录
+- ✅ 燃耗与点堆瞬态历史导出：CSV 时间序列和带输入参数的 JSON 记录
 - ✅ 1D/2D/3D 迭代诊断图：k_eff 收敛历史、残差对数曲线与末次收缩率
 - ✅ Web UI 第一轮产品化：统一结果区、参数操作流程提示与可读的求解错误反馈
 - ✅ 解析特征值验证（debug 方法论）
@@ -267,17 +270,12 @@ python3 main.py benchmark
 
 ## 测试与持续集成
 
-- **100 个单元测试**，覆盖扩散、点堆动力学、解析基准、导出和 CLI：
-  - `test_diffusion.py`（41 个）— 扩散求解器、输入参数校验、资源保护、临界搜索、幂迭代、收敛失败诊断、2D/3D Laplacian 解析验证、跨模块物理一致性
-  - `test_kinetics.py`（21 个）— 点堆方程、倒时方程、瞬发跳变、弹棒事故与输入校验
-  - `test_benchmarks.py`（3 个）— 一维平板解析基准与网格收敛
-  - `test_visualization.py`（4 个）— 收敛诊断图与收缩率计算
-  - `test_result_export.py`（5 个）— CSV/JSON 结果与燃耗历史导出
-  - `test_edge_cases.py`（13 个）— 资源上限、非法参数、3D 导出、JSON 序列化与诊断边界条件
-  - `test_main.py`（3 个）— 统一 CLI 入口与导出回归
-  - `test_cli_e2e.py`（2 个）— CLI 导出与错误退出码
-  - `test_plotting.py`（1 个）— Matplotlib 字体配置
-  - `test_convergence.py`（3 个）— 网页收敛提示与严格下游保护
+- **114 个自动化测试**，覆盖扩散、点堆动力学、燃耗、解析基准、导出、网页和 CLI：
+  - `test_diffusion.py`、`test_kinetics.py`、`test_benchmarks.py` — 求解器、物理一致性与解析基准
+  - `test_burnup_coupled.py` — 核素总量守恒、步长敏感性、零燃耗和提前停止
+  - `test_result_export.py`、`test_app_workflows.py` — CSV/JSON 时间点与元数据、Streamlit 结果页状态
+  - `test_edge_cases.py`、`test_convergence.py`、`test_visualization.py` — 参数边界、资源保护和收敛诊断
+  - `test_main.py`、`test_cli_e2e.py`、`test_plotting.py` — CLI 与字体配置
 - **GitHub Actions**：push / PR 到 `master`/`main` 时，自动运行 Ruff 静态检查，并在 Python 3.10 和 3.12 下运行 `pytest tests/ -v`
 
 ---
