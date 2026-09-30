@@ -120,8 +120,12 @@ def cmd_critical_scan(args):
     )
     print(f"\n  k_inf (无穷大介质) = {cs['analytic']['k_inf']:.4f}")
     print(f"  徙动面积 M²       = {cs['analytic']['M2']:.1f} cm²")
-    print(f"  临界尺寸 L_crit    = {cs['L_crit']:.0f} cm")
-    print(f"  k(L_crit)          = {cs['k_crit']:.6f}")
+    if cs['critical_bracketed']:
+        print(f"  临界尺寸 L_crit    = {cs['L_crit']:.0f} cm (扫描点间插值)")
+        print(f"  k(L_crit)          ≈ {cs['k_crit']:.6f}")
+    else:
+        print("  扫描范围内没有跨过 k_eff=1，未找到临界尺寸。")
+        print(f"  最近采样点 k_eff   = {cs['k_crit']:.6f}")
 
 
 def cmd_boron_search(args):

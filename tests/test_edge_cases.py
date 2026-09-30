@@ -7,8 +7,12 @@ import json
 import numpy as np
 import pytest
 
+from burnup_solver import find_critical_burnup
 from resource_guards import estimate_two_group_resources, guard_problem_size
-from solver import scan_critical_size, search_critical_boron, solve_two_group
+from solver import (
+    DEFAULTS, scan_critical_size, search_critical_boron, solve_keff_with_boron, solve_two_group,
+)
+from solver_2d import scan_critical_size_2d
 from result_export import build_result_record, result_to_csv_bytes, result_to_json_bytes
 from visualization import build_convergence_figure, final_convergence_rate
 
@@ -48,6 +52,47 @@ def test_scan_interpolates_a_bracketed_critical_size():
 
     assert result['critical_bracketed'] is True
     assert result['k_crit'] == 1.0
+
+
+def test_2d_scan_interpolates_only_when_critical_size_is_bracketed():
+    bracketed = scan_critical_size_2d(L_min=40, L_max=400, n_points=6, Nx=10, Ny=10)
+    assert bracketed['critical_bracketed'] is True
+    assert bracketed['k_crit'] == 1.0
+    assert 112 < bracketed['L_crit'] < 184
+
+    unbracketed = scan_critical_size_2d(L_min=40, L_max=80, n_points=2, Nx=10, Ny=10)
+    assert unbracketed['critical_bracketed'] is False
+    assert unbracketed['k_crit'] < 1.0
+
+
+def test_2d_scan_rejects_invalid_grid_and_range():
+    with pytest.raises(ValueError, match='n_points must be at least 2'):
+        scan_critical_size_2d(n_points=1)
+    with pytest.raises(ValueError, match='L_min must be smaller'):
+        scan_critical_size_2d(L_min=100, L_max=100)
+
+
+def test_boron_search_handles_critical_concentration_below_10_ppm():
+    sections = DEFAULTS.copy()
+    initial_k = solve_keff_with_boron(0, N=30)
+    scale = 1.00005 / initial_k
+    sections['nu_Sf1'] *= scale
+    sections['nu_Sf2'] *= scale
+
+    result = search_critical_boron(N=30, C_range=(0, 20), sections=sections)
+
+    assert 0 <= result['C_crit'] < 10
+    assert abs(result['k_final'] - 1.0) < 1e-5
+    assert np.isfinite(result['boron_worth'])
+    assert result['boron_worth'] > 0
+
+
+def test_critical_burnup_requires_a_real_crossing():
+    burnup = [0, 10, 20]
+    assert find_critical_burnup(burnup, [1.2, 1.1, 1.05]) is None
+    assert find_critical_burnup(burnup, [0.8, 0.9, 0.95]) is None
+    assert find_critical_burnup(burnup, [1.2, 1.1, 0.9]) == pytest.approx(15.0)
+    assert find_critical_burnup(burnup, [1.2, 1.0, 0.9]) == 10.0
 
 
 def test_scan_and_boron_search_reject_invalid_ranges():

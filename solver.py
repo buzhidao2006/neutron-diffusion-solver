@@ -332,17 +332,20 @@ def search_critical_boron(L=200.0, N=150, alpha=1.0e-5, C_range=(0, 3000), secti
         raise_on_nonconvergence=True,
     )
 
-    # 硼微分价值
+    # 在零浓度附近使用单侧区间，避免把负硼浓度送入求解器。
     dC = 10.0
+    C_minus = max(0.0, C_crit - dC)
+    C_plus = C_crit + dC
     k_plus = solve_keff_with_boron(
-        C_crit + dC, L=L, N=N, alpha=alpha, sections=sections,
+        C_plus, L=L, N=N, alpha=alpha, sections=sections,
         raise_on_nonconvergence=True,
     )
     k_minus = solve_keff_with_boron(
-        C_crit - dC, L=L, N=N, alpha=alpha, sections=sections,
+        C_minus, L=L, N=N, alpha=alpha, sections=sections,
         raise_on_nonconvergence=True,
     )
-    rho_per_ppm = (k_minus - k_plus) / (2 * dC) / k_final ** 2 * 1e5
+    # ρ=1-1/k；用区间两端的反应性差计算平均微分价值。
+    rho_per_ppm = (1 / k_plus - 1 / k_minus) / (C_plus - C_minus) * 1e5
 
     return {
         'C_crit': C_crit,

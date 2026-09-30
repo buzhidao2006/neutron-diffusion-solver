@@ -24,7 +24,7 @@ from result_export import (
 from visualization import build_convergence_figure, final_convergence_rate
 from convergence import convergence_summary
 from power_iteration import ConvergenceError
-from burnup_solver import run_burnup_coupled, N_U_TOTAL
+from burnup_solver import find_critical_burnup, run_burnup_coupled, N_U_TOTAL
 from point_kinetics import (
     solve_point_kinetics, KEEPIN_U235,
     reactivity_step, reactivity_ramp, reactivity_sinusoidal,
@@ -280,6 +280,9 @@ elif tab == "临界尺寸扫描":
         L_crit = cs['L_crit']
         k_crit = cs['k_crit']
         analytic = cs['analytic']
+        critical_bracketed = cs['critical_bracketed']
+        if not critical_bracketed:
+            st.warning("扫描范围内没有跨过 k_eff=1；下方只展示最接近临界的采样点。")
 
         # 指标
         col1, col2, col3 = st.columns(3)
@@ -288,8 +291,8 @@ elif tab == "临界尺寸扫描":
         with col2:
             st.metric("徙动面积 M²", f"{analytic['M2']:.1f} cm²")
         with col3:
-            st.metric("临界尺寸 L_crit", f"{L_crit:.0f} cm",
-                      delta=f"数值解 k ≈ {k_crit:.4f}")
+            st.metric("临界尺寸 L_crit", f"{L_crit:.0f} cm" if critical_bracketed else "未找到",
+                      delta=f"最近采样点 k = {k_crit:.4f}" if not critical_bracketed else None)
 
         # 图
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
@@ -297,8 +300,9 @@ elif tab == "临界尺寸扫描":
         ax1.plot(cs['L_vals'], cs['k_vals'], 'b.-', linewidth=2, markersize=8, label='FDM 数值解')
         ax1.plot(cs['L_vals'], analytic['k_buckling'], 'r--', linewidth=2, label='Buckling 近似')
         ax1.axhline(y=1.0, color='k', linestyle=':', linewidth=1, label='k=1')
-        ax1.axvline(x=L_crit, color='gray', linestyle=':', linewidth=1,
-                    label=f'L_crit ≈ {L_crit:.0f} cm')
+        if critical_bracketed:
+            ax1.axvline(x=L_crit, color='gray', linestyle=':', linewidth=1,
+                        label=f'L_crit ≈ {L_crit:.0f} cm')
         ax1.set_xlabel('平板厚度 L (cm)')
         ax1.set_ylabel('k_eff')
         ax1.set_title('临界尺寸扫描')
@@ -314,6 +318,11 @@ elif tab == "临界尺寸扫描":
 
         st.pyplot(fig)
 
+        if analytic['k_inf'] > 1:
+            analytic_length = np.pi * np.sqrt(analytic['M2'] / (analytic['k_inf'] - 1))
+            analytic_critical_text = f"代入当前参数约为 {analytic_length:.1f} cm。"
+        else:
+            analytic_critical_text = "当前 k_inf ≤ 1，解析近似不存在有限的临界尺寸。"
         with st.expander("📖 临界条件公式", expanded=False):
             st.markdown(f"""
             **临界方程** (考研必考)：
@@ -324,7 +333,8 @@ elif tab == "临界尺寸扫描":
             - $M^2 = {analytic['M2']:.1f}$ cm² — 徙动面积
             - $B^2 = (\\pi/L)^2$ — 几何曲率
 
-            反解临界尺寸：$L_{{crit}} = \\pi \\sqrt{{\\frac{{M^2}}{{k_\\infty - 1}}}} = {np.pi * np.sqrt(analytic['M2'] / (analytic['k_inf'] - 1)):.1f}$ cm
+            反解临界尺寸：$L_{{crit}} = \\pi \\sqrt{{\\frac{{M^2}}{{k_\\infty - 1}}}}$。
+            {analytic_critical_text}
             """)
 
 # ===== 临界硼搜索 =====
@@ -348,7 +358,7 @@ elif tab == "临界硼搜索":
             st.metric("临界硼浓度 C_B*", f"{cb['C_crit']:.1f} ppm")
         with col2:
             st.metric("硼微分价值", f"{cb['boron_worth']:.1f} pcm/ppm",
-                      delta="每 ppm 硼 ≈ -10.8 pcm")
+                      help="每增加 1 ppm 硼引起的反应性下降量（在临界浓度附近估算）。")
         with col3:
             st.metric("k(C_B*)", f"{cb['k_final']:.8f}")
 
@@ -702,8 +712,7 @@ elif tab == "🔥 燃耗耦合":
         k_eff = hist['k_eff']
         time_years = hist['time_days'] / 365
 
-        idx_k1 = np.argmin(np.abs(k_eff - 1.0))
-        bu_k1 = bu[idx_k1]
+        bu_k1 = find_critical_burnup(bu, k_eff)
 
         st.subheader("燃耗-扩散耦合计算结果")
         completed_steps = max(len(bu) - 1, 0)
@@ -733,8 +742,11 @@ elif tab == "🔥 燃耗耦合":
         with col1:
             st.metric("初始 k_eff", f"{k_eff[0]:.4f}")
         with col2:
-            st.metric("k=1 燃耗", f"{bu_k1:.1f} MWd/kgU",
-                      delta=f"{time_years[idx_k1]:.1f} 年")
+            if bu_k1 is None:
+                st.metric("k=1 燃耗", "未达到")
+            else:
+                st.metric("k=1 燃耗", f"{bu_k1:.1f} MWd/kgU",
+                          delta=f"{np.interp(bu_k1, bu, time_years):.1f} 年")
         with col3:
             st.metric("最终 k_eff", f"{k_eff[-1]:.4f}",
                       delta=f"@{bu[-1]:.1f} MWd/kgU")
@@ -750,7 +762,8 @@ elif tab == "🔥 燃耗耦合":
         ax = axes[0, 0]
         ax.plot(bu, k_eff, '#e74c3c', linewidth=2.5)
         ax.axhline(y=1.0, color='k', linestyle=':', linewidth=1.5, label='k=1')
-        ax.axvline(x=bu_k1, color='gray', linestyle='--', linewidth=1)
+        if bu_k1 is not None:
+            ax.axvline(x=bu_k1, color='gray', linestyle='--', linewidth=1)
         ax.fill_between(bu, 0, k_eff, color='#e74c3c', alpha=0.06)
         ax.set_xlabel('燃耗 (MWd/kgU)')
         ax.set_ylabel('k_eff')
@@ -792,6 +805,9 @@ elif tab == "🔥 燃耗耦合":
 
         st.pyplot(fig, use_container_width=True)
 
+        critical_burnup_text = (
+            f"{bu_k1:.1f} MWd/kgU" if bu_k1 is not None else "扫描范围内未达到"
+        )
         with st.expander("📖 燃耗耦合原理", expanded=False):
             st.markdown(f"""
             ### 耦合计算流程
@@ -809,7 +825,7 @@ elif tab == "🔥 燃耗耦合":
             | 关键结果 | 值 |
             |----------|-----|
             | 初始 k_eff | {k_eff[0]:.4f} |
-            | k=1 燃耗 (卸料) | {bu_k1:.1f} MWd/kgU |
+            | k=1 燃耗 (卸料) | {critical_burnup_text} |
             | 辐照时间 | {hist['time_days'][-1]:.0f} 天 ({time_years[-1]:.1f} 年) |
             | U235 消耗 | {enrichment*100:.1f}% → {u235_final:.2f}% |
             | Pu239 峰值 | {np.max(hist['N_Pu239']) / N_U_TOTAL * 100:.2f}% |

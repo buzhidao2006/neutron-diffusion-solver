@@ -31,7 +31,7 @@ Day 5  ● 二维双群 + Kronecker 积稀疏矩阵 + 解析验证
 Day 6  ● 阶段性学习总结
 Day 7  ● 幂迭代 + Chebyshev 外推加速
 Wk 4   ● 点堆动力学求解器（6 群缓发中子）
-       ● 96 个 pytest 单元测试
+       ● 100 个 pytest 单元测试
        ● Jupyter 教学版 notebook
        ● 三维双群扩散（Kronecker 积扩展到 3D）
        ● 统一 CLI 入口 main.py
@@ -93,7 +93,7 @@ neutron-diffusion-solver/
 ├── validate_2d.py           # 二维解析验证（特征值 + buckling + 网格收敛）
 ├── neutron_diffusion_tutorial.ipynb  # Jupyter 教学版（扩散→点堆全链路）
 │
-├── tests/                   # 96 个 pytest 单元测试
+├── tests/                   # 100 个 pytest 单元测试
 │   ├── test_diffusion.py    # 扩散/临界/幂迭代/2D/3D 验证
 │   ├── test_kinetics.py     # 点堆动力学验证
 │   ├── test_benchmarks.py   # 解析基准与网格收敛
@@ -267,7 +267,7 @@ python3 main.py benchmark
 
 ## 测试与持续集成
 
-- **96 个单元测试**，覆盖扩散、点堆动力学、解析基准、导出和 CLI：
+- **100 个单元测试**，覆盖扩散、点堆动力学、解析基准、导出和 CLI：
   - `test_diffusion.py`（41 个）— 扩散求解器、输入参数校验、资源保护、临界搜索、幂迭代、收敛失败诊断、2D/3D Laplacian 解析验证、跨模块物理一致性
   - `test_kinetics.py`（21 个）— 点堆方程、倒时方程、瞬发跳变、弹棒事故与输入校验
   - `test_benchmarks.py`（3 个）— 一维平板解析基准与网格收敛
