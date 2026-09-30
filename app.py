@@ -16,6 +16,8 @@ from resource_guards import estimate_two_group_resources
 from result_export import (
     burnup_history_to_csv_bytes,
     burnup_history_to_json_bytes,
+    point_kinetics_to_csv_bytes,
+    point_kinetics_to_json_bytes,
     result_to_csv_bytes,
     result_to_json_bytes,
 )
@@ -74,6 +76,24 @@ def show_burnup_downloads(history, inputs):
         st.download_button(
             "下载可复现记录 JSON", burnup_history_to_json_bytes(history, inputs),
             "burnup_history.json", "application/json", key="burnup_history_json",
+        )
+
+
+def show_kinetics_downloads(result, inputs):
+    """Render reproducible CSV and JSON exports for a point-kinetics run."""
+    st.markdown("#### 📥 导出瞬态结果")
+    csv_col, json_col = st.columns(2)
+    with csv_col:
+        st.download_button(
+            "下载瞬态历史 CSV", point_kinetics_to_csv_bytes(result, inputs),
+            "point_kinetics_history.csv", "text/csv", key="point_kinetics_csv",
+            on_click="ignore",
+        )
+    with json_col:
+        st.download_button(
+            "下载可复现记录 JSON", point_kinetics_to_json_bytes(result, inputs),
+            "point_kinetics_history.json", "application/json",
+            key="point_kinetics_json", on_click="ignore",
         )
 
 
@@ -870,72 +890,91 @@ elif tab == "⏱️ 点堆动力学":
 
         beta = KEEPIN_U235['beta']
         beta_pcm = beta * 1e5
+        P_final = float(result.P[-1])
+        P_peak = float(np.max(result.P))
+        peak_index = int(np.argmax(result.P))
+        rho_final = float(result.rho[-1])
+        T_asym = asymptotic_period(rho_final)
+        final_period = float(result.period[-1])
+        reached_end = np.isclose(result.t[-1], t_span_val, rtol=1e-6, atol=1e-9)
 
-        # 指标卡片
-        P_final = result.P[-1]
-        P_max_val = np.max(result.P)
+        st.subheader("点堆动力学计算结果")
+        if reached_end:
+            st.success(
+                f"瞬态计算完成：场景「{scenario}」，仿真至 {result.t[-1]:.4g} s，"
+                f"共 {len(result.t)} 个时间点。"
+            )
+        else:
+            st.warning(
+                f"计算提前停止于 {result.t[-1]:.4g} s（设定终点 {t_span_val:.4g} s）；"
+                "可能触发了功率保护阈值。"
+            )
+        st.caption(result.info)
+
+        export_inputs = {
+            'scenario': scenario,
+            'simulation_end_s': t_span_val,
+            'use_log_power': use_log,
+            'power_limit': P_max_val,
+            'reactivity_pcm': rho_pcm if scenario not in ("线性提棒", "正弦振荡") else None,
+            'ramp_rate_pcm_per_s': rho_rate if scenario == "线性提棒" else None,
+            'oscillation_amplitude_pcm': amp if scenario == "正弦振荡" else None,
+            'oscillation_period_s': period_osc if scenario == "正弦振荡" else None,
+            'rod_ejection_time_constant_ms': tau_eject if scenario == "弹棒事故" else None,
+        }
+        show_kinetics_downloads(result, export_inputs)
+
+        # 摘要卡片只展示绝对值，避免把最终值误解成相对变化方向。
         col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("最终功率 P/P₀", f"{P_final:.4f}",
-                      delta=f"峰值 {P_max_val:.4f}" if P_max_val > P_final else None)
-        with col2:
-            rho_final = result.rho[-1]
-            st.metric("最终反应性", f"{rho_final * 1e5:.0f} pcm",
-                      delta=f"{rho_final / beta:.1f} $")
-        with col3:
-            T_asym = asymptotic_period(rho_final)
-            st.metric("渐近周期", f"{T_asym:.1f} s" if abs(T_asym) < 1e6 else "∞")
-        with col4:
-            if abs(rho_final) > 0 and abs(rho_final) < beta:
-                Pj = prompt_jump(1.0, rho_final)
-                st.metric("瞬发跳变理论值", f"{Pj:.3f} P₀")
-            else:
-                st.metric("状态", "瞬发临界!" if rho_final >= beta else "深次临界")
+        col1.metric("最终归一化功率", f"{P_final:.4g} P₀")
+        col2.metric("峰值功率", f"{P_peak:.4g} P₀", help=f"出现在 {result.t[peak_index]:.4g} s")
+        col3.metric("最终反应性", f"{rho_final * 1e5:.3g} pcm",
+                    help=f"约 {rho_final / beta:.3g} 美元（β）")
+        col4.metric("最终反应堆周期", f"{final_period:.4g} s"
+                    if np.isfinite(final_period) else "未定义")
 
-        # 双图：功率 + 反应性
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
-
-        # 功率
-        ax1.plot(result.t, result.P, 'b-', linewidth=2.0)
-        ax1.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, label='初始稳态')
+        fig, (ax_power, ax_reactivity, ax_period) = plt.subplots(
+            3, 1, figsize=(13, 10), layout="constrained",
+        )
+        ax_power.plot(result.t, result.P, color="#2471a3", linewidth=2.0)
+        ax_power.axhline(y=1.0, color="gray", linestyle="--", alpha=0.6, label="初始稳态")
         if abs(rho_final) > 0 and abs(rho_final) < beta:
-            Pj = prompt_jump(1.0, rho_final)
-            if 0 < Pj < 20:
-                ax1.axhline(y=Pj, color='orange', linestyle=':', alpha=0.7,
-                            label=f'瞬发跳变 = {Pj:.2f}')
-        ax1.set_xlabel('时间 (s)')
-        ax1.set_ylabel('归一化功率 P/P₀')
-        ax1.set_title(f'功率响应 — {scenario}', fontweight='bold')
-        ax1.legend(fontsize=9)
-        ax1.grid(True, alpha=0.25)
-        if P_max_val > 100:
-            ax1.set_yscale('log')
+            jump_value = prompt_jump(1.0, rho_final)
+            if 0 < jump_value < 20:
+                ax_power.axhline(
+                    y=jump_value, color="#e67e22", linestyle=":", alpha=0.8,
+                    label=f"瞬发跳变理论值 = {jump_value:.2f} P₀",
+                )
+        ax_power.set_xlabel("时间 (s)")
+        ax_power.set_ylabel("归一化功率 P/P₀")
+        ax_power.set_title(f"功率响应：{scenario}", fontweight="bold", pad=10)
+        ax_power.legend(loc="best", fontsize=9)
+        ax_power.grid(True, alpha=0.25)
+        if P_peak > 100:
+            ax_power.set_yscale("log")
 
-        # 反应性
-        ax2.plot(result.t, result.rho * 1e5, 'r-', linewidth=2.0)
-        ax2.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-        ax2.axhline(y=beta_pcm, color='orange', linestyle=':', alpha=0.7,
-                    label=f'β = {beta_pcm:.0f} pcm (瞬发临界)')
-        ax2.set_xlabel('时间 (s)')
-        ax2.set_ylabel('反应性 ρ (pcm)')
-        ax2.set_title('反应性引入历史', fontweight='bold')
-        ax2.legend(fontsize=9)
-        ax2.grid(True, alpha=0.25)
+        ax_reactivity.plot(result.t, result.rho * 1e5, color="#c0392b", linewidth=2.0)
+        ax_reactivity.axhline(y=0, color="gray", linestyle="--", alpha=0.6)
+        ax_reactivity.axhline(
+            y=beta_pcm, color="#e67e22", linestyle=":", alpha=0.8,
+            label=f"β = {beta_pcm:.0f} pcm（瞬发临界）",
+        )
+        ax_reactivity.set_xlabel("时间 (s)")
+        ax_reactivity.set_ylabel("反应性 ρ (pcm)")
+        ax_reactivity.set_title("反应性引入历史", fontweight="bold", pad=10)
+        ax_reactivity.legend(loc="best", fontsize=9)
+        ax_reactivity.grid(True, alpha=0.25)
 
-        plt.tight_layout()
-        st.pyplot(fig)
-
-        # 周期
-        fig2, ax = plt.subplots(figsize=(13, 4))
-        period = result.period
-        mask = (np.abs(period) < 1e4) & (period != 0)
-        ax.plot(result.t[mask], period[mask], 'g-', linewidth=2.0)
-        ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
-        ax.set_xlabel('时间 (s)')
-        ax.set_ylabel('反应堆周期 T (s)')
-        ax.set_title('反应堆周期', fontweight='bold')
-        ax.grid(True, alpha=0.25)
-        st.pyplot(fig2)
+        period = np.asarray(result.period)
+        period_mask = np.isfinite(period) & (np.abs(period) < 1e4) & (period != 0)
+        ax_period.plot(result.t[period_mask], period[period_mask],
+                       color="#239b56", linewidth=2.0)
+        ax_period.axhline(y=0, color="gray", linestyle="--", alpha=0.6)
+        ax_period.set_xlabel("时间 (s)")
+        ax_period.set_ylabel("反应堆周期 T (s)")
+        ax_period.set_title("反应堆周期历史", fontweight="bold", pad=10)
+        ax_period.grid(True, alpha=0.25)
+        st.pyplot(fig, use_container_width=True)
 
         # 物理解释
         with st.expander("📖 点堆动力学原理", expanded=False):
