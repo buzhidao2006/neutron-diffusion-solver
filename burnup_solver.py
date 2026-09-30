@@ -9,6 +9,7 @@
 """
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 from numbers import Integral, Real
 from solver import solve_two_group, DEFAULTS
 from bateman import (
@@ -38,7 +39,7 @@ def find_critical_burnup(burnup, k_eff):
 
 
 def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
-                        L=200.0,                    # 堆芯半厚度 (cm)
+                        L=200.0,                    # 模拟平板全厚度 (cm)
                         N_grid=150,                 # 扩散网格点数
                         total_burnup=60.0,          # 总燃耗 (MWd/kgU)
                         n_burnup_steps=50,          # 燃耗步数
@@ -213,25 +214,31 @@ def run_burnup_coupled(initial_enrichment=0.04,   # 初始 U235 富集度
         # 计算达到目标燃耗步长所需的时间
         # 燃耗步长 (MWd/kgU) → 需要的裂变数 → Δt
         fissions_needed = burnup_step * kgU_per_cm3 * FISSIONS_PER_MWD
-        if Sigma_f2 > 1e-10:
-            dt = fissions_needed / (flux_val * max(Sigma_f2, 1e-8))
-        else:
-            dt = 86400.0  # 默认 1 天
-
-        dt = min(dt, 365 * 86400.0)  # 最大步长 1 年
+        if Sigma_f2 <= 1e-10:
+            raise ValueError("Fission rate is too small to advance the requested burnup.")
+        # Keep the fission rate fixed within this requested burnup step, as in
+        # the first-order coupled model. Split long steps instead of silently
+        # shortening the irradiation time while crediting the full burnup.
+        total_dt = fissions_needed / (flux_val * Sigma_f2)
+        max_substep_seconds = 365 * 86400.0
+        if not np.isfinite(total_dt) or total_dt > 10000 * max_substep_seconds:
+            raise ValueError("Burnup step requires too much irradiation time; increase n_burnup_steps.")
+        n_substeps = max(1, math.ceil(total_dt / max_substep_seconds))
+        dt = total_dt / n_substeps
 
         # 欧拉步进
-        dN_U235 = -R_U235 * N_U235 * dt
-        dN_U238 = -R_U238 * N_U238 * dt
-        dN_Pu239 = (R_U238 * N_U238 - R_Pu239 * N_Pu239) * dt
-        dN_FP = (R_U235 * N_U235 + R_Pu239 * N_Pu239) * dt
+        for _ in range(n_substeps):
+            dN_U235 = -R_U235 * N_U235 * dt
+            dN_U238 = -R_U238 * N_U238 * dt
+            dN_Pu239 = (R_U238 * N_U238 - R_Pu239 * N_Pu239) * dt
+            dN_FP = (R_U235 * N_U235 + R_Pu239 * N_Pu239) * dt
 
-        N_U235 = max(N_U235 + dN_U235, 0.0)
-        N_U238 = max(N_U238 + dN_U238, 0.0)
-        N_Pu239 = max(N_Pu239 + dN_Pu239, 0.0)
-        N_FP = max(N_FP + dN_FP, 0.0)
+            N_U235 = max(N_U235 + dN_U235, 0.0)
+            N_U238 = max(N_U238 + dN_U238, 0.0)
+            N_Pu239 = max(N_Pu239 + dN_Pu239, 0.0)
+            N_FP = max(N_FP + dN_FP, 0.0)
 
-        total_time += dt
+        total_time += total_dt
         cumulative_burnup += burnup_step
 
     # 转换为 numpy 数组

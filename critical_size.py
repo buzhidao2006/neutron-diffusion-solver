@@ -71,8 +71,8 @@ idx = np.argmin(np.abs(k_numerical - 1.0))
 L_crit = L_vals[idx]
 print(f"k_inf = {k_inf:.4f}")
 print(f"徙动面积 M² = {M2:.1f} cm²")
-print(f"临界半厚度（数值）≈ {L_crit:.1f} cm")
-print(f"临界半厚度（解析）≈ {np.pi * np.sqrt(M2 / (k_inf - 1)):.1f} cm  (仅当 k_inf>1)")
+print(f"临界全厚度（数值）≈ {L_crit:.1f} cm")
+print(f"临界全厚度（解析近似）≈ {np.pi * np.sqrt(M2 / (k_inf - 1)):.1f} cm  (仅当 k_inf>1)")
 
 # ====== 画图 ======
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))

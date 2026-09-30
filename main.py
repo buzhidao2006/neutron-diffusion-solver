@@ -314,7 +314,7 @@ def main():
 
     # 2g
     p = subparsers.add_parser("2g", help="一维双群扩散")
-    p.add_argument("--L", type=float, default=200.0, help="平板半厚度 cm")
+    p.add_argument("--L", type=float, default=200.0, help="模拟平板全厚度 cm")
     p.add_argument("--N", type=int, default=150, help="网格点数")
     p.add_argument("--D1", type=float, default=1.2)
     p.add_argument("--D2", type=float, default=0.4)

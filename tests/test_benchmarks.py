@@ -3,6 +3,7 @@
 import numpy as np
 
 from benchmarks.slab_one_group import convergence_study, run_slab_benchmark
+from benchmarks.slab_two_group import convergence_study as two_group_study
 
 
 def test_matrix_solution_matches_discrete_analytic_eigenvalue():
@@ -23,3 +24,13 @@ def test_convergence_study_is_monotonic():
     results = convergence_study()
     errors = [result.relative_error for result in results]
     assert all(next_error < error for error, next_error in zip(errors, errors[1:]))
+
+
+def test_published_two_group_slab_mode_matches_discrete_eigenvalue_and_flux():
+    results = two_group_study()
+    errors = [case.relative_error for case in results]
+
+    for case in results:
+        np.testing.assert_allclose(case.k_numeric, case.k_discrete, rtol=1e-9)
+        assert case.flux_shape_l2_error < 1e-6
+    assert all(fine < coarse / 3.5 for coarse, fine in zip(errors, errors[1:]))
