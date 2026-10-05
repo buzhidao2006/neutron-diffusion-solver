@@ -216,6 +216,16 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
+真实浏览器回归单独运行，检查默认燃耗和点堆结果页及实际下载的 CSV/JSON：
+
+```bash
+pip install -r requirements-browser.txt
+python -m playwright install chromium
+python -m pytest browser_tests/ -v
+```
+
+GitHub Actions 在每次 PR 上运行这组 Chromium 测试；失败时上传页面截图、追踪文件和 Streamlit 日志。
+
 ### 运行解析基准
 
 ```bash

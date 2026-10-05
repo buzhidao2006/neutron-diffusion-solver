@@ -50,3 +50,35 @@ jobs:
     - name: Run tests
       run: |
         python -m pytest tests/ -v --tb=short
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install browser test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-browser.txt
+        pip install --no-deps -e .
+        python -m playwright install --with-deps chromium
+
+    - name: Run browser regressions
+      env:
+        BROWSER_TEST_ARTIFACTS: browser-artifacts
+      run: python -m pytest browser_tests/ -v --tb=short
+
+    - name: Upload browser failure diagnostics
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: browser-diagnostics
+        path: browser-artifacts/
+        if-no-files-found: ignore
