@@ -1,9 +1,11 @@
 """解析基准与网格收敛性测试。"""
 
 import numpy as np
+import pytest
 
 from benchmarks.slab_one_group import convergence_study, run_slab_benchmark
 from benchmarks.slab_two_group import convergence_study as two_group_study
+from benchmarks.slab_two_group import TEACHING_CASES
 
 
 def test_matrix_solution_matches_discrete_analytic_eigenvalue():
@@ -32,5 +34,18 @@ def test_published_two_group_slab_mode_matches_discrete_eigenvalue_and_flux():
 
     for case in results:
         np.testing.assert_allclose(case.k_numeric, case.k_discrete, rtol=1e-9)
+        np.testing.assert_allclose(case.k_numeric, case.k_independent, rtol=1e-9)
         assert case.flux_shape_l2_error < 1e-6
+    assert all(fine < coarse / 3.5 for coarse, fine in zip(errors, errors[1:]))
+
+
+@pytest.mark.parametrize("case_name", TEACHING_CASES)
+def test_two_group_parameter_cases_match_independent_matrix_solve(case_name):
+    case_input = TEACHING_CASES[case_name]
+    results = two_group_study((20, 40, 80, 160), **case_input)
+    errors = [result.relative_error for result in results]
+    for result in results:
+        np.testing.assert_allclose(result.k_numeric, result.k_independent, rtol=1e-9)
+        np.testing.assert_allclose(result.k_numeric, result.k_discrete, rtol=1e-9)
+        assert result.flux_shape_l2_error < 1e-6
     assert all(fine < coarse / 3.5 for coarse, fine in zip(errors, errors[1:]))

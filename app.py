@@ -800,7 +800,7 @@ elif tab == "🔥 燃耗耦合":
         ax.plot(bu, hist['Sigma_a2'], '#c0392b', linewidth=2, label='Sigma_a2')
         ax.plot(bu, hist['Sigma_f2'], '#27ae60', linewidth=2, label='Sigma_f2')
         ax.set_xlabel('燃耗 (MWd/kgU)')
-        ax.set_ylabel('宏观截面 (cm⁻¹)')
+        ax.set_ylabel(r'宏观截面 ($\mathrm{cm}^{-1}$)')
         ax.set_title('截面演化', fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.25)
@@ -961,10 +961,10 @@ elif tab == "⏱️ 点堆动力学":
             if 0 < jump_value < 20:
                 ax_power.axhline(
                     y=jump_value, color="#e67e22", linestyle=":", alpha=0.8,
-                    label=f"瞬发跳变理论值 = {jump_value:.2f} P₀",
+                    label=f"瞬发跳变理论值 = {jump_value:.2f} $P_0$",
                 )
         ax_power.set_xlabel("时间 (s)")
-        ax_power.set_ylabel("归一化功率 P/P₀")
+        ax_power.set_ylabel(r"归一化功率 $P/P_0$")
         ax_power.set_title(f"功率响应：{scenario}", fontweight="bold", pad=10)
         ax_power.legend(loc="best", fontsize=9)
         ax_power.grid(True, alpha=0.25)
