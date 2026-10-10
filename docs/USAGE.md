@@ -91,4 +91,15 @@ python -m ruff check .
 python -m pytest tests/ -v
 ```
 
-GitHub Actions 会在 Python 3.10 和 3.12 上重复执行这些检查。
+GitHub Actions 会在 Python 3.10 和 3.12 上运行常规测试，并执行 Ruff；每次 PR 还会单独运行默认燃耗和点堆流程的真实浏览器测试。
+
+### Windows 本地测试缓存权限问题
+
+若 Windows 中的 OneDrive 工作目录或系统临时目录对 pytest 缓存、临时文件的清理报 `PermissionError`，可关闭 pytest 缓存插件，并为本次运行指定一个新的临时目录：
+
+```powershell
+$testTemp = Join-Path $env:TEMP ("nds-pytest-" + [guid]::NewGuid().ToString("N"))
+python -m pytest tests/ -v -p no:cacheprovider --basetemp $testTemp
+```
+
+此命令不会清空既有 `.pytest_cache`，也不会删除其他测试目录。测试仍报权限错误时，先关闭占用测试文件的编辑器、浏览器或同步进程，并确认 `$env:TEMP` 指向可写目录；不要把权限清理错误当作测试断言失败。正常环境无需这些选项。
