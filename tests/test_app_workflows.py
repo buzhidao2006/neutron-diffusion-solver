@@ -9,11 +9,15 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from bateman import N_U_TOTAL
+from plotting import configure_matplotlib_fonts
 from point_kinetics import PointKineticsResult
 
 
 APP = Path(__file__).resolve().parents[1] / 'app.py'
-pytestmark = pytest.mark.filterwarnings("error:Glyph .* missing from font")
+pytestmark = (
+    [pytest.mark.filterwarnings("error:Glyph .* missing from font")]
+    if configure_matplotlib_fonts() else []
+)
 
 
 def _burnup_history(k_values):
